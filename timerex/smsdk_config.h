@@ -38,12 +38,12 @@
   */
 
   /* Basic information exposed publicly */
-#define SMEXT_CONF_NAME      "myExtension"
+#define SMEXT_CONF_NAME      "timerex"
 #define SMEXT_CONF_DESCRIPTION  ""
 #define SMEXT_CONF_VERSION    "0.0.0.0"
 #define SMEXT_CONF_AUTHOR    "CirnoV <cirnov59@gmail.com>"
 #define SMEXT_CONF_URL      "https://github.com/cirnov/"
-#define SMEXT_CONF_LOGTAG    "SAMPLE"
+#define SMEXT_CONF_LOGTAG    "TIMEREX"
 #define SMEXT_CONF_LICENSE    "GPL"
 #define SMEXT_CONF_DATESTRING  __DATE__
 
@@ -67,7 +67,7 @@
   //#define SMEXT_ENABLE_MEMUTILS
   //#define SMEXT_ENABLE_GAMEHELPERS
   //#define SMEXT_ENABLE_TIMERSYS
-  //#define SMEXT_ENABLE_THREADER
+  #define SMEXT_ENABLE_THREADER
   //#define SMEXT_ENABLE_LIBSYS
   //#define SMEXT_ENABLE_MENUS
   //#define SMEXT_ENABLE_ADTFACTORY
@@ -76,6 +76,6 @@
   //#define SMEXT_ENABLE_TEXTPARSERS
   //#define SMEXT_ENABLE_USERMSGS
   //#define SMEXT_ENABLE_TRANSLATOR
-  //#define SMEXT_ENABLE_ROOTCONSOLEMENU
+  #define SMEXT_ENABLE_ROOTCONSOLEMENU
 
 #endif // _INCLUDE_SOURCEMOD_EXTENSION_CONFIG_H_

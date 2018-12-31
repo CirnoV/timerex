@@ -29,6 +29,7 @@
  * Version: $Id$
  */
 
+#include <vector>
 #include "extension.h"
 
  /**
@@ -36,6 +37,75 @@
   * @brief Implement extension code here.
   */
 
-Sample g_Sample;    /**< Global singleton for extension's main interface */
+Extension extension;    /**< Global singleton for extension's main interface */
 
-SMEXT_LINK(&g_Sample);
+SMEXT_LINK(&extension);
+
+struct TimerInfo
+{
+  IPluginFunction *Hook;
+  IPluginContext *pContext;
+  int UserData;
+  int Flags;
+};
+
+std::vector<TimerInfo> sTimerVector;
+IThreadHandle *pTimerThread;
+
+static cell_t CreateTimerEx(IPluginContext *pCtx, const cell_t *params)
+{
+  IPluginFunction *pFunc;
+  TimerInfo Info;
+  int flags = params[3];
+
+  pFunc = pCtx->GetFunctionById(params[1]);
+  if (!pFunc)
+  {
+    return pCtx->ThrowNativeError("Invalid function id (%X)", params[2]);
+  }
+
+  Info.UserData = params[2];
+  Info.Flags = flags;
+  Info.Hook = pFunc;
+  Info.pContext = pCtx;
+
+  sTimerVector.push_back(Info);
+
+  return 1;
+}
+
+const sp_nativeinfo_t MyNatives[] = {
+  {"CreateTimerEx", CreateTimerEx},
+  {NULL, NULL},
+};
+
+void Extension::RunThread(IThreadHandle *pHandle) {
+  while (true) {
+    rootconsole->ConsolePrint("test");
+  }
+}
+void Extension::OnTerminate(IThreadHandle *pHandle, bool cancel) {
+
+}
+
+bool Extension::SDK_OnLoad(char *error, size_t maxlen, bool late) {
+  sTimerVector.reserve(100);
+
+  ThreadParams params;
+  params.flags = Thread_Default;
+  params.prio = ThreadPrio_Maximum;
+  pTimerThread = threader->MakeThread(this, &params);
+
+  return true;
+}
+
+void Extension::SDK_OnUnload() {
+  if (pTimerThread != NULL)
+  {
+    pTimerThread->DestroyThis();
+  }
+}
+
+void Extension::SDK_OnAllLoaded() {
+  sharesys->AddNatives(myself, MyNatives);
+}

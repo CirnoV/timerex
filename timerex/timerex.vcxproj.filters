@@ -16,6 +16,9 @@
     <Filter Include="SourceMod SDK">
       <UniqueIdentifier>{d5816b82-5f0d-40ae-9743-357af481f958}</UniqueIdentifier>
     </Filter>
+    <Filter Include="include">
+      <UniqueIdentifier>{664fb123-3e49-450a-b94b-abe49f097eb8}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="extension.cpp">
@@ -39,6 +42,9 @@
   <ItemGroup>
     <None Include=".editorconfig">
       <Filter>리소스 파일</Filter>
+    </None>
+    <None Include="..\scripting\include\timerex.inc">
+      <Filter>include</Filter>
     </None>
   </ItemGroup>
 </Project>
