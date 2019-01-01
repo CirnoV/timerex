@@ -40,11 +40,11 @@
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
-    <None Include=".editorconfig">
-      <Filter>리소스 파일</Filter>
-    </None>
     <None Include="..\scripting\include\timerex.inc">
       <Filter>include</Filter>
+    </None>
+    <None Include=".editorconfig">
+      <Filter>리소스 파일</Filter>
     </None>
   </ItemGroup>
 </Project>

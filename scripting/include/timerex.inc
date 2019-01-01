@@ -14,6 +14,13 @@ typeset TimerEx
 
 native void CreateTimerEx(float interval, TimerEx func, any data=INVALID_HANDLE, int flags=0);
 
+stock void CreateDataTimerEx(float interval, TimerEx func, Handle &datapack, int flags=0)
+{
+	datapack = new DataPack();
+	flags |= TIMER_DATA_HNDL_CLOSE;
+	CreateTimer(interval, func, datapack, flags);
+}
+
 public Extension __ext_timerex = 
 {
 	name = "timerex",

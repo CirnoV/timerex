@@ -30,6 +30,7 @@
  */
 
 #include <vector>
+#include <chrono>
 #include "extension.h"
 
  /**
@@ -45,31 +46,88 @@ struct TimerInfo
 {
   IPluginFunction *Hook;
   IPluginContext *pContext;
+  std::chrono::system_clock::time_point time;
+  int interval;
   int UserData;
   int Flags;
 };
 
 std::vector<TimerInfo> sTimerVector;
-IThreadHandle *pTimerThread;
+IdentityToken_t *g_pCoreIdent;
+
+void PushTimer(IPluginFunction *Hook, IPluginContext *pContext, std::chrono::system_clock::time_point time, int interval, int UserData, int Flags) {
+  TimerInfo Info;
+  Info.Hook = Hook;
+  Info.pContext = pContext;
+  Info.time = time;
+  Info.interval = interval;
+  Info.UserData = UserData;
+  Info.Flags = Flags;
+
+  sTimerVector.push_back(Info);
+}
+
+std::vector<TimerInfo>::iterator EraseTimer(std::vector<TimerInfo>::iterator it) {
+  int flags = it->Flags;
+
+  if (flags & TIMER_DATA_HNDL_CLOSE) {
+    HandleSecurity sec;
+    HandleError herr;
+    Handle_t usrhndl = static_cast<Handle_t>(it->UserData);
+
+    sec.pOwner = it->pContext->GetIdentity();
+    sec.pIdentity = g_pCoreIdent;
+
+    herr = handlesys->FreeHandle(usrhndl, &sec);
+    if (herr != HandleError_None) {
+      smutils->LogError(myself, "Invalid data handle %x (error %d) passed during timer end with TIMER_DATA_HNDL_CLOSE", usrhndl, herr);
+    }
+  }
+
+  return sTimerVector.erase(it);
+}
+
+std::vector<TimerInfo>::iterator OnTimer(std::vector<TimerInfo>::iterator it) {
+  int flags = it->Flags;
+  ResultType result;
+
+  IPluginFunction *pFunc = it->Hook;
+  if (!pFunc->IsRunnable()) {
+    return it;
+  }
+
+  cell_t res = static_cast<cell_t>(Pl_Continue);
+  pFunc->PushCell(it->UserData);
+  pFunc->Execute(&res);
+  result = static_cast<ResultType>(res);
+
+  if (flags & TIMER_REPEAT && result == Pl_Continue) {
+    auto start = std::chrono::system_clock::now();
+    auto time = start + std::chrono::milliseconds(it->interval);
+    it->time = time;
+
+    return it;
+  }
+  return EraseTimer(it);
+}
 
 static cell_t CreateTimerEx(IPluginContext *pCtx, const cell_t *params)
 {
   IPluginFunction *pFunc;
   TimerInfo Info;
-  int flags = params[3];
+  int flags = params[4];
 
-  pFunc = pCtx->GetFunctionById(params[1]);
+  pFunc = pCtx->GetFunctionById(params[2]);
   if (!pFunc)
   {
     return pCtx->ThrowNativeError("Invalid function id (%X)", params[2]);
   }
 
-  Info.UserData = params[2];
-  Info.Flags = flags;
-  Info.Hook = pFunc;
-  Info.pContext = pCtx;
+  int interval = static_cast<int>(sp_ctof(params[1]) * 1000);
+  auto start = std::chrono::system_clock::now();
+  auto time = start + std::chrono::milliseconds(interval);
 
-  sTimerVector.push_back(Info);
+  PushTimer(pFunc, pCtx, time, interval, params[3], flags);
 
   return 1;
 }
@@ -79,31 +137,44 @@ const sp_nativeinfo_t MyNatives[] = {
   {NULL, NULL},
 };
 
-void Extension::RunThread(IThreadHandle *pHandle) {
-  while (true) {
-    rootconsole->ConsolePrint("test");
+void Extension::OnCoreMapEnd() {
+  std::vector<TimerInfo>::iterator it;
+  for (it = sTimerVector.begin(); it != sTimerVector.end();) {
+    if (it->Flags & TIMER_FLAG_NO_MAPCHANGE) {
+      it = EraseTimer(it);
+    }
+    else {
+      ++it;
+    }
   }
 }
-void Extension::OnTerminate(IThreadHandle *pHandle, bool cancel) {
 
+void RunTimer(bool simulating) {
+  if (!sTimerVector.empty()) {
+    auto now = std::chrono::system_clock::now();
+    std::vector<TimerInfo>::iterator it;
+    for (it = sTimerVector.begin(); it != sTimerVector.end();) {
+      if (it->time <= now) {
+        it = OnTimer(it);
+      }
+      else {
+        ++it;
+      }
+    }
+  }
 }
 
 bool Extension::SDK_OnLoad(char *error, size_t maxlen, bool late) {
-  sTimerVector.reserve(100);
+  g_pCoreIdent = sharesys->CreateIdentity(sharesys->FindIdentType("CORE"), this);
+  sTimerVector.reserve(1000);
 
-  ThreadParams params;
-  params.flags = Thread_Default;
-  params.prio = ThreadPrio_Maximum;
-  pTimerThread = threader->MakeThread(this, &params);
+  smutils->AddGameFrameHook(RunTimer);
 
   return true;
 }
 
 void Extension::SDK_OnUnload() {
-  if (pTimerThread != NULL)
-  {
-    pTimerThread->DestroyThis();
-  }
+
 }
 
 void Extension::SDK_OnAllLoaded() {
