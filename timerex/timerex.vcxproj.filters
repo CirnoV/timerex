@@ -27,6 +27,9 @@
     <ClCompile Include="smsdk_ext.cpp">
       <Filter>SourceMod SDK</Filter>
     </ClCompile>
+    <ClCompile Include="timerinfo.cpp">
+      <Filter>소스 파일</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="extension.h">
@@ -37,6 +40,9 @@
     </ClInclude>
     <ClInclude Include="smsdk_ext.h">
       <Filter>SourceMod SDK</Filter>
+    </ClInclude>
+    <ClInclude Include="timerinfo.h">
+      <Filter>헤더 파일</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

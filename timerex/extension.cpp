@@ -30,8 +30,12 @@
  */
 
 #include <vector>
+#include <queue>
 #include <chrono>
 #include "extension.h"
+#include <am-thread-utils.h>
+
+#include "timerinfo.h"
 
  /**
   * @file extension.cpp
@@ -42,79 +46,15 @@ Extension extension;    /**< Global singleton for extension's main interface */
 
 SMEXT_LINK(&extension);
 
-struct TimerInfo
-{
-  IPluginFunction *Hook;
-  IPluginContext *pContext;
-  std::chrono::system_clock::time_point time;
-  int interval;
-  int UserData;
-  int Flags;
-};
-
-std::vector<TimerInfo> sTimerVector;
-IdentityToken_t *g_pCoreIdent;
-
-void PushTimer(IPluginFunction *Hook, IPluginContext *pContext, std::chrono::system_clock::time_point time, int interval, int UserData, int Flags) {
-  TimerInfo Info;
-  Info.Hook = Hook;
-  Info.pContext = pContext;
-  Info.time = time;
-  Info.interval = interval;
-  Info.UserData = UserData;
-  Info.Flags = Flags;
-
-  sTimerVector.push_back(Info);
-}
-
-std::vector<TimerInfo>::iterator EraseTimer(std::vector<TimerInfo>::iterator it) {
-  int flags = it->Flags;
-
-  if (flags & TIMER_DATA_HNDL_CLOSE) {
-    HandleSecurity sec;
-    HandleError herr;
-    Handle_t usrhndl = static_cast<Handle_t>(it->UserData);
-
-    sec.pOwner = it->pContext->GetIdentity();
-    sec.pIdentity = g_pCoreIdent;
-
-    herr = handlesys->FreeHandle(usrhndl, &sec);
-    if (herr != HandleError_None) {
-      smutils->LogError(myself, "Invalid data handle %x (error %d) passed during timer end with TIMER_DATA_HNDL_CLOSE", usrhndl, herr);
-    }
-  }
-
-  return sTimerVector.erase(it);
-}
-
-std::vector<TimerInfo>::iterator OnTimer(std::vector<TimerInfo>::iterator it) {
-  int flags = it->Flags;
-  ResultType result;
-
-  IPluginFunction *pFunc = it->Hook;
-  if (!pFunc->IsRunnable()) {
-    return it;
-  }
-
-  cell_t res = static_cast<cell_t>(Pl_Continue);
-  pFunc->PushCell(it->UserData);
-  pFunc->Execute(&res);
-  result = static_cast<ResultType>(res);
-
-  if (flags & TIMER_REPEAT && result == Pl_Continue) {
-    auto start = std::chrono::system_clock::now();
-    auto time = start + std::chrono::milliseconds(it->interval);
-    it->time = time;
-
-    return it;
-  }
-  return EraseTimer(it);
-}
+std::vector<TimerInfo*> sTimerVector;
+std::queue<TimerInfo*> sTimerExeQueue;
+IdentityToken_t *g_pCoreToken;
+IThreadHandle *pTimerThread;
+IMutex *pTimerMutex;
 
 static cell_t CreateTimerEx(IPluginContext *pCtx, const cell_t *params)
 {
   IPluginFunction *pFunc;
-  TimerInfo Info;
   int flags = params[4];
 
   pFunc = pCtx->GetFunctionById(params[2]);
@@ -127,7 +67,10 @@ static cell_t CreateTimerEx(IPluginContext *pCtx, const cell_t *params)
   auto start = std::chrono::system_clock::now();
   auto time = start + std::chrono::milliseconds(interval);
 
-  PushTimer(pFunc, pCtx, time, interval, params[3], flags);
+  TimerInfo *timer = new TimerInfo(pFunc, pCtx, interval, params[3], flags);
+  pTimerMutex->Lock();
+  sTimerVector.push_back(timer);
+  pTimerMutex->Unlock();
 
   return 1;
 }
@@ -138,43 +81,110 @@ const sp_nativeinfo_t MyNatives[] = {
 };
 
 void Extension::OnCoreMapEnd() {
-  std::vector<TimerInfo>::iterator it;
+  pTimerMutex->Lock();
+  std::vector<TimerInfo*>::iterator it;
   for (it = sTimerVector.begin(); it != sTimerVector.end();) {
-    if (it->Flags & TIMER_FLAG_NO_MAPCHANGE) {
-      it = EraseTimer(it);
+    TimerInfo *info = (*it);
+    if (info->mFlags & TIMER_FLAG_NO_MAPCHANGE) {
+      delete info;
+      it = sTimerVector.erase(it);
     }
     else {
       ++it;
     }
   }
+  while (!sTimerExeQueue.empty()) {
+    TimerInfo *info = sTimerExeQueue.front();
+    delete info;
+    sTimerExeQueue.pop();
+  }
+  pTimerMutex->Unlock();
 }
 
 void RunTimer(bool simulating) {
-  if (!sTimerVector.empty()) {
-    auto now = std::chrono::system_clock::now();
-    std::vector<TimerInfo>::iterator it;
-    for (it = sTimerVector.begin(); it != sTimerVector.end();) {
-      if (it->time <= now) {
-        it = OnTimer(it);
-      }
-      else {
-        ++it;
-      }
+  pTimerMutex->Lock();
+  while (!sTimerExeQueue.empty()) {
+    TimerInfo *info = sTimerExeQueue.front();
+    sTimerExeQueue.pop();
+    int flags = info->mFlags;
+    ResultType result;
+
+    IPluginFunction *pFunc = info->mHook;
+    if (!pFunc->IsRunnable()) {
+      return;
     }
+
+    cell_t res = static_cast<cell_t>(Pl_Continue);
+    pFunc->PushCell(info->mUserData);
+    pFunc->Execute(&res);
+    result = static_cast<ResultType>(res);
+
+    if (flags & TIMER_REPEAT && result == Pl_Continue) {
+      auto start = std::chrono::system_clock::now();
+      auto time = start + std::chrono::milliseconds(info->mInterval);
+      info->mTime = time;
+      sTimerVector.push_back(info);
+    }
+    else {
+      delete info;
+    }
+  }
+  pTimerMutex->Unlock();
+}
+
+void Extension::RunThread(IThreadHandle *pHandle) {
+  while(true) {
+    if (!sTimerVector.empty()) {
+      auto now = std::chrono::system_clock::now();
+      std::vector<TimerInfo*>::iterator it;
+      pTimerMutex->Lock();
+      for (it = sTimerVector.begin(); it != sTimerVector.end();) {
+        TimerInfo *info = (*it);
+        if (info->mTime <= now) {
+          sTimerExeQueue.push(*it);
+          it = sTimerVector.erase(it);
+        }
+        else {
+          ++it;
+        }
+      }
+      pTimerMutex->Unlock();
+    }
+    threader->ThreadSleep(1);
   }
 }
 
+void Extension::OnTerminate(IThreadHandle *pHandle, bool cancel) {}
+
 bool Extension::SDK_OnLoad(char *error, size_t maxlen, bool late) {
-  g_pCoreIdent = sharesys->CreateIdentity(sharesys->FindIdentType("CORE"), this);
+  g_pCoreToken = sharesys->CreateIdentity(sharesys->FindIdentType("CORE"), this);
   sTimerVector.reserve(1000);
 
   smutils->AddGameFrameHook(RunTimer);
+  ThreadParams params;
+  params.flags = Thread_Default;
+  params.prio = ThreadPrio_Maximum;
+  pTimerThread = threader->MakeThread(this, &params);
+  pTimerMutex = threader->MakeMutex();
 
   return true;
 }
 
 void Extension::SDK_OnUnload() {
+  smutils->RemoveGameFrameHook(RunTimer);
+  pTimerThread->DestroyThis();
+  pTimerMutex->DestroyThis();
 
+  std::vector<TimerInfo*>::iterator it;
+  for (it = sTimerVector.begin(); it != sTimerVector.end();) {
+    TimerInfo *info = (*it);
+    delete info;
+    it = sTimerVector.erase(it);
+  }
+  while (!sTimerExeQueue.empty()) {
+    delete sTimerExeQueue.front();
+    sTimerExeQueue.pop();
+  }
 }
 
 void Extension::SDK_OnAllLoaded() {

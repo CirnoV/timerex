@@ -39,6 +39,8 @@
 
 #include "smsdk_ext.h"
 
+extern IdentityToken_t *g_pCoreToken;
+
 #define TIMER_REPEAT			(1<<0)		/**< Timer will repeat until it returns Plugin_Stop */
 #define TIMER_FLAG_NO_MAPCHANGE	(1<<1)		/**< Timer will not carry over mapchanges */
 #define TIMER_DATA_HNDL_CLOSE		(1<<9)		/**< Timer will automatically call CloseHandle() on its data when finished */
@@ -47,8 +49,11 @@
    * @brief Sample implementation of the SDK Extension.
    * Note: Uncomment one of the pre-defined virtual functions in order to use it.
    */
-class Extension : public SDKExtension
+class Extension : public SDKExtension, public IThread
 {
+public: /* IThread */
+  void RunThread(IThreadHandle *pHandle);
+  void OnTerminate(IThreadHandle *pHandle, bool cancel);
 public:
   virtual void OnCoreMapEnd();
 public:

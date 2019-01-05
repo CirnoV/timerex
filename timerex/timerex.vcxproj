@@ -154,11 +154,13 @@
   <ItemGroup>
     <ClCompile Include="extension.cpp" />
     <ClCompile Include="smsdk_ext.cpp" />
+    <ClCompile Include="timerinfo.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="extension.h" />
     <ClInclude Include="smsdk_config.h" />
     <ClInclude Include="smsdk_ext.h" />
+    <ClInclude Include="timerinfo.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="..\scripting\include\timerex.inc" />
