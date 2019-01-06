@@ -133,22 +133,35 @@ void RunTimer(bool simulating) {
 }
 
 void Extension::RunThread(IThreadHandle *pHandle) {
+  static int cacheSize = 0;
+  static std::chrono::system_clock::time_point cacheTime = std::chrono::system_clock::now();
   while(true) {
     if (!sTimerVector.empty()) {
+      auto vectorSize = sTimerVector.size();
       auto now = std::chrono::system_clock::now();
-      std::vector<TimerInfo*>::iterator it;
-      pTimerMutex->Lock();
-      for (it = sTimerVector.begin(); it != sTimerVector.end();) {
-        TimerInfo *info = (*it);
-        if (info->mTime <= now) {
-          sTimerExeQueue.push(*it);
-          it = sTimerVector.erase(it);
+
+      if (cacheSize != vectorSize || cacheTime <= now) {
+        cacheTime = (std::chrono::system_clock::time_point::max)();
+
+        std::vector<TimerInfo*>::iterator it;
+        pTimerMutex->Lock();
+        for (it = sTimerVector.begin(); it != sTimerVector.end();) {
+          TimerInfo *info = (*it);
+          auto time = info->mTime;
+          if (time <= now) {
+            sTimerExeQueue.push(*it);
+            it = sTimerVector.erase(it);
+          }
+          else {
+            if (time <= cacheTime) {
+              cacheTime = time;
+            }
+            ++it;
+          }
         }
-        else {
-          ++it;
-        }
+        cacheSize = sTimerVector.size();
+        pTimerMutex->Unlock();
       }
-      pTimerMutex->Unlock();
     }
     threader->ThreadSleep(1);
   }
