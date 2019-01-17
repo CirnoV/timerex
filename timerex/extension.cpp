@@ -47,10 +47,7 @@ Extension extension;    /**< Global singleton for extension's main interface */
 SMEXT_LINK(&extension);
 
 std::vector<TimerInfo*> sTimerVector;
-std::queue<TimerInfo*> sTimerExeQueue;
 IdentityToken_t *g_pCoreToken;
-IThreadHandle *pTimerThread;
-IMutex *pTimerMutex;
 
 static cell_t CreateTimerEx(IPluginContext *pCtx, const cell_t *params)
 {
@@ -68,9 +65,7 @@ static cell_t CreateTimerEx(IPluginContext *pCtx, const cell_t *params)
   auto time = start + std::chrono::milliseconds(interval);
 
   TimerInfo *timer = new TimerInfo(pFunc, pCtx, interval, params[3], flags);
-  pTimerMutex->Lock();
   sTimerVector.push_back(timer);
-  pTimerMutex->Unlock();
 
   return 1;
 }
@@ -81,7 +76,6 @@ const sp_nativeinfo_t MyNatives[] = {
 };
 
 void Extension::OnCoreMapEnd() {
-  pTimerMutex->Lock();
   std::vector<TimerInfo*>::iterator it;
   for (it = sTimerVector.begin(); it != sTimerVector.end();) {
     TimerInfo *info = (*it);
@@ -93,110 +87,82 @@ void Extension::OnCoreMapEnd() {
       ++it;
     }
   }
-  while (!sTimerExeQueue.empty()) {
-    TimerInfo *info = sTimerExeQueue.front();
+}
+
+void ExecFunc(TimerInfo *info) {
+  int flags = info->mFlags;
+  ResultType result;
+
+  IPluginFunction *pFunc = info->mHook;
+  if (!pFunc->IsRunnable()) {
     delete info;
-    sTimerExeQueue.pop();
+    return;
   }
-  pTimerMutex->Unlock();
+
+  cell_t res = static_cast<cell_t>(Pl_Continue);
+  pFunc->PushCell(info->mUserData);
+  pFunc->Execute(&res);
+  result = static_cast<ResultType>(res);
+
+  if (flags & TIMER_REPEAT && result == Pl_Continue) {
+    auto start = std::chrono::system_clock::now();
+    auto time = start + std::chrono::milliseconds(info->mInterval);
+    info->mTime = time;
+    sTimerVector.push_back(info);
+  }
+  else {
+    delete info;
+  }
 }
 
 void RunTimer(bool simulating) {
-  pTimerMutex->Lock();
-  while (!sTimerExeQueue.empty()) {
-    TimerInfo *info = sTimerExeQueue.front();
-    sTimerExeQueue.pop();
-    int flags = info->mFlags;
-    ResultType result;
-
-    IPluginFunction *pFunc = info->mHook;
-    if (!pFunc->IsRunnable()) {
-      return;
-    }
-
-    cell_t res = static_cast<cell_t>(Pl_Continue);
-    pFunc->PushCell(info->mUserData);
-    pFunc->Execute(&res);
-    result = static_cast<ResultType>(res);
-
-    if (flags & TIMER_REPEAT && result == Pl_Continue) {
-      auto start = std::chrono::system_clock::now();
-      auto time = start + std::chrono::milliseconds(info->mInterval);
-      info->mTime = time;
-      sTimerVector.push_back(info);
-    }
-    else {
-      delete info;
-    }
-  }
-  pTimerMutex->Unlock();
-}
-
-void Extension::RunThread(IThreadHandle *pHandle) {
-  static int cacheSize = 0;
+  static size_t cacheSize = 0;
   static std::chrono::system_clock::time_point cacheTime = std::chrono::system_clock::now();
-  while(true) {
-    if (!sTimerVector.empty()) {
-      auto vectorSize = sTimerVector.size();
-      auto now = std::chrono::system_clock::now();
 
-      if (cacheSize != vectorSize || cacheTime <= now) {
-        cacheTime = (std::chrono::system_clock::time_point::max)();
+  auto now = std::chrono::system_clock::now();
+  if (!sTimerVector.empty()) {
+    auto vectorSize = sTimerVector.size();
 
-        std::vector<TimerInfo*>::iterator it;
-        pTimerMutex->Lock();
-        for (it = sTimerVector.begin(); it != sTimerVector.end();) {
-          TimerInfo *info = (*it);
-          auto time = info->mTime;
-          if (time <= now) {
-            sTimerExeQueue.push(*it);
-            it = sTimerVector.erase(it);
-          }
-          else {
-            if (time <= cacheTime) {
-              cacheTime = time;
-            }
-            ++it;
-          }
+    if (cacheSize != vectorSize || cacheTime <= now) {
+      cacheTime = (std::chrono::system_clock::time_point::max)();
+
+      std::vector<TimerInfo*>::iterator it;
+      for (it = sTimerVector.begin(); it != sTimerVector.end();) {
+        TimerInfo *info = (*it);
+        auto time = info->mTime;
+        if (time <= now) {
+          ExecFunc(info);
+          it = sTimerVector.erase(it);
         }
-        cacheSize = sTimerVector.size();
-        pTimerMutex->Unlock();
+        else {
+          if (time <= cacheTime) {
+            cacheTime = time;
+          }
+          ++it;
+        }
       }
+      cacheSize = sTimerVector.size();
     }
-    threader->ThreadSleep(1);
   }
 }
-
-void Extension::OnTerminate(IThreadHandle *pHandle, bool cancel) {}
 
 bool Extension::SDK_OnLoad(char *error, size_t maxlen, bool late) {
   g_pCoreToken = sharesys->CreateIdentity(sharesys->FindIdentType("CORE"), this);
   sTimerVector.reserve(1000);
 
   smutils->AddGameFrameHook(RunTimer);
-  ThreadParams params;
-  params.flags = Thread_Default;
-  params.prio = ThreadPrio_Maximum;
-  pTimerThread = threader->MakeThread(this, &params);
-  pTimerMutex = threader->MakeMutex();
 
   return true;
 }
 
 void Extension::SDK_OnUnload() {
   smutils->RemoveGameFrameHook(RunTimer);
-  pTimerThread->DestroyThis();
-  pTimerMutex->DestroyThis();
 
   std::vector<TimerInfo*>::iterator it;
   for (it = sTimerVector.begin(); it != sTimerVector.end();) {
     TimerInfo *info = (*it);
     delete info;
     it = sTimerVector.erase(it);
-  }
-  while (!sTimerExeQueue.empty()) {
-    delete sTimerExeQueue.front();
-    sTimerExeQueue.pop();
   }
 }
 
