@@ -49,11 +49,8 @@ extern IdentityToken_t *g_pCoreToken;
    * @brief Sample implementation of the SDK Extension.
    * Note: Uncomment one of the pre-defined virtual functions in order to use it.
    */
-class Extension : public SDKExtension, public IThread
+class Extension : public SDKExtension
 {
-public: /* IThread */
-  void RunThread(IThreadHandle *pHandle);
-  void OnTerminate(IThreadHandle *pHandle, bool cancel);
 public:
   virtual void OnCoreMapEnd();
 public:
