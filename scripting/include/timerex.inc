@@ -18,7 +18,7 @@ stock void CreateDataTimerEx(float interval, TimerEx func, Handle &datapack, int
 {
 	datapack = new DataPack();
 	flags |= TIMER_DATA_HNDL_CLOSE;
-	CreateTimer(interval, func, datapack, flags);
+	CreateTimerEx(interval, func, datapack, flags);
 }
 
 public Extension __ext_timerex = 
