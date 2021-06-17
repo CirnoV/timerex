@@ -49,7 +49,9 @@ extern IdentityToken_t *g_pCoreToken;
    * @brief Sample implementation of the SDK Extension.
    * Note: Uncomment one of the pre-defined virtual functions in order to use it.
    */
-class Extension : public SDKExtension
+class Extension :
+  public SDKExtension,
+  public IPluginsListener
 {
 public:
   virtual void OnCoreMapEnd();
@@ -88,6 +90,11 @@ public:
      * @return      True if working, false otherwise.
      */
      //virtual bool QueryRunning(char *error, size_t maxlen);
+public: //IPluginsListener
+  void OnPluginLoaded(IPlugin* plugin);
+  void OnPluginUnloaded(IPlugin* plugin);
+  void OnPluginWillUnload(IPlugin* plugin);
+
 public:
 #if defined SMEXT_CONF_METAMOD
   /**

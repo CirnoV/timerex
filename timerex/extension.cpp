@@ -61,9 +61,6 @@ static cell_t CreateTimerEx(IPluginContext *pCtx, const cell_t *params)
   }
 
   int interval = static_cast<int>(sp_ctof(params[1]) * 1000);
-  auto start = std::chrono::system_clock::now();
-  auto time = start + std::chrono::milliseconds(interval);
-
   TimerInfo *timer = new TimerInfo(pFunc, pCtx, interval, params[3], flags);
   sTimerVector.push_back(timer);
 
@@ -78,7 +75,7 @@ const sp_nativeinfo_t MyNatives[] = {
 void Extension::OnCoreMapEnd() {
   std::vector<TimerInfo*>::iterator it;
   for (it = sTimerVector.begin(); it != sTimerVector.end();) {
-    TimerInfo *info = (*it);
+    TimerInfo* info = (*it);
     if (info->mFlags & TIMER_FLAG_NO_MAPCHANGE) {
       delete info;
       it = sTimerVector.erase(it);
@@ -91,10 +88,9 @@ void Extension::OnCoreMapEnd() {
 
 void ExecFunc(TimerInfo *info) {
   int flags = info->mFlags;
-  ResultType result;
 
   IPluginFunction *pFunc = info->mHook;
-  if (!pFunc->IsRunnable()) {
+  if (!pFunc || !pFunc->IsRunnable()) {
     delete info;
     return;
   }
@@ -102,7 +98,7 @@ void ExecFunc(TimerInfo *info) {
   cell_t res = static_cast<cell_t>(Pl_Continue);
   pFunc->PushCell(info->mUserData);
   pFunc->Execute(&res);
-  result = static_cast<ResultType>(res);
+  ResultType result = static_cast<ResultType>(res);
 
   if (flags & TIMER_REPEAT && result == Pl_Continue) {
     auto start = std::chrono::system_clock::now();
@@ -150,8 +146,6 @@ bool Extension::SDK_OnLoad(char *error, size_t maxlen, bool late) {
   g_pCoreToken = sharesys->CreateIdentity(sharesys->FindIdentType("CORE"), this);
   sTimerVector.reserve(1000);
 
-  smutils->AddGameFrameHook(RunTimer);
-
   return true;
 }
 
@@ -167,5 +161,33 @@ void Extension::SDK_OnUnload() {
 }
 
 void Extension::SDK_OnAllLoaded() {
+  plsys->AddPluginsListener(this);
+  smutils->AddGameFrameHook(RunTimer);
   sharesys->AddNatives(myself, MyNatives);
+}
+
+void ResetTimer(SourceMod::IdentityToken_t* identity) {
+  std::vector<TimerInfo*>::iterator it;
+  for (it = sTimerVector.begin(); it != sTimerVector.end();) {
+    TimerInfo* info = (*it);
+    if (info->mContext->GetIdentity() == identity) {
+      delete info;
+      it = sTimerVector.erase(it);
+    }
+    else {
+      ++it;
+    }
+  }
+}
+
+void Extension::OnPluginLoaded(IPlugin* plugin) {
+  ResetTimer(plugin->GetBaseContext()->GetIdentity());
+}
+
+void Extension::OnPluginUnloaded(IPlugin* plugin) {
+  ResetTimer(plugin->GetBaseContext()->GetIdentity());
+}
+
+void Extension::OnPluginWillUnload(IPlugin* plugin) {
+  ResetTimer(plugin->GetBaseContext()->GetIdentity());
 }
