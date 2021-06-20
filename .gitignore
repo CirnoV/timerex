@@ -216,4 +216,10 @@ FakesAssemblies/
 **/*.Server/ModelManifest.xml
 _Pvt_Extensions
 
+
+# Added by cargo
+
+/target
+Cargo.lock
+
 .vscode/c_cpp_properties.json

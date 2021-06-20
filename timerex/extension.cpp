@@ -61,8 +61,8 @@ static cell_t CreateTimerEx(IPluginContext *pCtx, const cell_t *params)
   }
 
   int interval = static_cast<int>(sp_ctof(params[1]) * 1000);
-  TimerInfo *timer = new TimerInfo(pFunc, pCtx, interval, params[3], flags);
-  sTimerVector.push_back(timer);
+  TimerInfo *timer = new TimerInfo(pFunc, pCtx);
+  create_timer(timer, interval, params[3], flags);
 
   return 1;
 }
