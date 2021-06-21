@@ -47,9 +47,9 @@ IdentityToken_t *g_pCoreToken;
 
 static cell_t CreateTimerEx(IPluginContext *pCtx, const cell_t *params)
 {
-  int userData = params[3];
-  int flags = params[4];
-  int channel = params[5];
+  cell_t userData = params[3];
+  cell_t flags = params[4];
+  cell_t channel = params[5];
 
   IPluginFunction *pFunc = pCtx->GetFunctionById(params[2]);
   if (!pFunc)
@@ -57,14 +57,55 @@ static cell_t CreateTimerEx(IPluginContext *pCtx, const cell_t *params)
     return pCtx->ThrowNativeError("Invalid function id (%X)", params[2]);
   }
 
-  int interval = static_cast<int>(sp_ctof(params[1]) * 1000);
+  cell_t interval = static_cast<int>(sp_ctof(params[1]) * 1000);
   create_timer(pFunc, pCtx, pCtx->GetIdentity(), interval, userData, flags, channel);
+
+  return 1;
+}
+
+static cell_t PauseTimer(IPluginContext *pCtx, const cell_t *params)
+{
+  cell_t *array = NULL;
+  cell_t length = params[2];
+  if (length < 1)
+  {
+    return 0;
+  }
+  pCtx->LocalToPhysAddr(params[1], &array);
+  pause_timer(array, length);
+
+  return 1;
+}
+
+static cell_t ResumeTimer(IPluginContext *pCtx, const cell_t *params)
+{
+  cell_t *array = NULL;
+  cell_t length = params[2];
+  if (length < 1)
+  {
+    return 0;
+  }
+  pCtx->LocalToPhysAddr(params[1], &array);
+  resume_timer(array, length);
+
+  return 1;
+}
+
+static cell_t RemoveTimerChannel(IPluginContext *pCtx, const cell_t *params)
+{
+  cell_t channel = params[1];
+  timer_arr timers = remove_channel(channel);
+  kill_timer_arr(&timers);
+  drop_timer_arr(&timers);
 
   return 1;
 }
 
 const sp_nativeinfo_t MyNatives[] = {
     {"CreateTimerEx", CreateTimerEx},
+    {"PauseTimer", PauseTimer},
+    {"ResumeTimer", ResumeTimer},
+    {"RemoveTimerChannel", RemoveTimerChannel},
     {NULL, NULL},
 };
 
@@ -95,7 +136,7 @@ void ExecFunc(TimerInfo *info)
 void RunTimer(bool simulating)
 {
   timer_arr timers = update_timer();
-  for (int i = 0; i < timers.n; i = i + 1)
+  for (cell_t i = 0; i < timers.n; i = i + 1)
   {
     TimerInfo timerinfo = timers.arr[i];
     ExecFunc(&timerinfo);
@@ -128,22 +169,8 @@ void Extension::SDK_OnAllLoaded()
 
 void ResetTimer(SourceMod::IdentityToken_t *identity)
 {
-  timer_arr timers = clear_timer();
+  timer_arr timers = timer_pluginload(identity);
   kill_timer_arr(&timers);
-  std::vector<TimerInfo *>::iterator it;
-  for (it = sTimerVector.begin(); it != sTimerVector.end();)
-  {
-    TimerInfo *info = (*it);
-    if (info->mContext->GetIdentity() == identity)
-    {
-      delete info;
-      it = sTimerVector.erase(it);
-    }
-    else
-    {
-      ++it;
-    }
-  }
   drop_timer_arr(&timers);
 }
 

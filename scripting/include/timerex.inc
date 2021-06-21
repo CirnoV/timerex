@@ -3,6 +3,8 @@
 #endif
 #define _timerex_included
 
+#define TIMER_EX_CHANNEL_WORLD 0
+
 typeset TimerEx
 {
   function Action(Handle hndl);
@@ -12,7 +14,7 @@ typeset TimerEx
   function Action();
 }
 
-native void CreateTimerEx(float interval, TimerEx func, any data=INVALID_HANDLE, int flags=0);
+native void CreateTimerEx(float interval, TimerEx func, any data=INVALID_HANDLE, int flags=0, int channel = TIMER_CHANNEL_WORLD);
 
 stock void CreateDataTimerEx(float interval, TimerEx func, Handle &datapack, int flags=0)
 {
@@ -20,6 +22,8 @@ stock void CreateDataTimerEx(float interval, TimerEx func, Handle &datapack, int
 	flags |= TIMER_DATA_HNDL_CLOSE;
 	CreateTimerEx(interval, func, datapack, flags);
 }
+
+native void PauseTimer(int[] channels, int length);
 
 public Extension __ext_timerex = 
 {

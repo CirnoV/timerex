@@ -63,7 +63,7 @@ impl TimerChannel {
             Some(elapsed_timers)
         }
     }
-    fn stop(&mut self) {
+    fn pause(&mut self) {
         if let Some(_) = self.stopped {
             self.resume();
         }
@@ -94,6 +94,20 @@ impl TimerChannel {
                 timers.push(Reverse(timer));
             } else {
                 drop_timers.push(timer);
+            }
+        }
+        self.timers = timers;
+
+        drop_timers
+    }
+    fn handle_pluginload(&mut self, identity: *mut ffi::c_void) -> Vec<TimerDetail> {
+        let mut timers = BinaryHeap::new();
+        let mut drop_timers = Vec::new();
+        for Reverse(timer) in self.timers.drain() {
+            if timer.identity == identity {
+                drop_timers.push(timer);
+            } else {
+                timers.push(Reverse(timer));
             }
         }
         self.timers = timers;
@@ -244,16 +258,52 @@ pub extern "C" fn update_timer() -> timer_arr {
 }
 
 #[no_mangle]
-pub extern "C" fn stop_timer(channels: *mut i32, len: libc::size_t) {
+pub extern "C" fn pause_timer(channels: *mut i32, len: libc::size_t) {
     let channels = unsafe { Vec::from_raw_parts(channels, len, len) };
-    channels.iter().for_each(|&c| stop_channel(c))
+    channels.iter().for_each(|&c| pause_channel(c))
+}
+
+pub fn pause_channel(channel: i32) {
+    if let Some(channel) = TIMER_MAP.write().unwrap().get_mut(&channel) {
+        channel.pause()
+    }
 }
 
 #[no_mangle]
-pub extern "C" fn stop_channel(channel: i32) {
+pub extern "C" fn resume_timer(channels: *mut i32, len: libc::size_t) {
+    let channels = unsafe { Vec::from_raw_parts(channels, len, len) };
+    channels.iter().for_each(|&c| resume_channel(c))
+}
+
+pub fn resume_channel(channel: i32) {
     if let Some(channel) = TIMER_MAP.write().unwrap().get_mut(&channel) {
-        channel.stop()
+        channel.resume()
     }
+}
+
+#[no_mangle]
+pub extern "C" fn remove_channel(channel: i32) -> timer_arr {
+    let mut timers = {
+        let mut timer_map = TIMER_MAP.write().unwrap();
+        match timer_map.remove(&channel) {
+            Some(mut channel) => channel
+                .clear()
+                .into_iter()
+                .map(|detail| detail.into())
+                .collect(),
+            None => Vec::new(),
+        }
+    };
+
+    let output = {
+        timer_arr {
+            arr: timers.as_mut_ptr(),
+            n: timers.len(),
+            cap: timers.capacity(),
+        }
+    };
+    std::mem::forget(timers);
+    output
 }
 
 #[no_mangle]
@@ -289,7 +339,6 @@ pub extern "C" fn timer_mapchange() -> timer_arr {
             .flat_map(|channel| channel.handle_mapchange())
             .map(|detail| detail.into())
             .collect::<Vec<_>>();
-        timer_map.clear();
         timers
     };
 
@@ -305,13 +354,13 @@ pub extern "C" fn timer_mapchange() -> timer_arr {
 }
 
 #[no_mangle]
-pub extern "C" fn get_timer_all() -> timer_arr {
+pub extern "C" fn timer_pluginload(identity: *mut ffi::c_void) -> timer_arr {
     let mut timers = {
-        let timer_map = TIMER_MAP.read().unwrap();
+        let mut timer_map = TIMER_MAP.write().unwrap();
         let timers = timer_map
-            .values()
-            .flat_map(|channel| channel.timers.iter().collect::<Vec<_>>())
-            .map(|Reverse(detail)| detail.into())
+            .values_mut()
+            .flat_map(|channel| channel.handle_pluginload(identity))
+            .map(|detail| detail.into())
             .collect::<Vec<_>>();
         timers
     };

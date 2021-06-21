@@ -31,14 +31,16 @@ void drop_timer_arr(timer_arr *arr);
 
 timer_arr update_timer();
 
-void stop_timer(int32_t *channels, size_t len);
+void pause_timer(int32_t *channels, size_t len);
 
-void stop_channel(int32_t channel);
+void resume_timer(int32_t *channels, size_t len);
+
+timer_arr remove_channel(int32_t channel);
 
 timer_arr clear_timer();
 
 timer_arr timer_mapchange();
 
-timer_arr get_timer_all();
+timer_arr timer_pluginload(void *identity);
 
 } // extern "C"
