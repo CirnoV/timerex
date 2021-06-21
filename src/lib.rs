@@ -1,3 +1,7 @@
+#![allow(non_upper_case_globals)]
+#![allow(non_camel_case_types)]
+#![allow(non_snake_case)]
+
 use std::cmp::Reverse;
 use std::collections::{BTreeMap, BinaryHeap};
 use std::ffi;
@@ -79,13 +83,31 @@ impl TimerChannel {
         }
         self.timers = timers;
     }
+    fn clear(&mut self) -> Vec<TimerDetail> {
+        self.timers.drain().map(|Reverse(timer)| timer).collect()
+    }
+    fn handle_mapchange(&mut self) -> Vec<TimerDetail> {
+        let mut timers = BinaryHeap::new();
+        let mut drop_timers = Vec::new();
+        for Reverse(timer) in self.timers.drain() {
+            if timer.flags.contains(TimerFlags::TIMER_FLAG_NO_MAPCHANGE) {
+                timers.push(Reverse(timer));
+            } else {
+                drop_timers.push(timer);
+            }
+        }
+        self.timers = timers;
+
+        drop_timers
+    }
 }
 
 #[derive(Clone, Copy)]
 #[repr(C)]
 pub struct TimerDetail {
-    hook: *const ffi::c_void,
-    context: *const ffi::c_void,
+    hook: *mut ffi::c_void,
+    context: *mut ffi::c_void,
+    identity: *mut ffi::c_void,
     time: Instant,
     interval: Duration,
     user_data: i32,
@@ -123,8 +145,9 @@ unsafe impl Sync for TimerDetail {}
 
 #[no_mangle]
 pub extern "C" fn create_timer(
-    hook: *const ffi::c_void,
-    context: *const ffi::c_void,
+    hook: *mut ffi::c_void,
+    context: *mut ffi::c_void,
+    identity: *mut ffi::c_void,
     interval: u32,
     user_data: i32,
     flags: i32,
@@ -133,6 +156,7 @@ pub extern "C" fn create_timer(
     let t = TimerDetail {
         hook,
         context,
+        identity,
         time: Instant::now(),
         interval: Duration::from_millis(interval.into()),
         user_data,
@@ -154,8 +178,8 @@ pub extern "C" fn create_timer(
 
 #[repr(C)]
 pub struct TimerInfo {
-    hook: *const ffi::c_void,
-    context: *const ffi::c_void,
+    hook: *mut ffi::c_void,
+    context: *mut ffi::c_void,
     user_data: i32,
     flags: i32,
 }
@@ -171,16 +195,35 @@ impl From<TimerDetail> for TimerInfo {
     }
 }
 
+impl From<&TimerDetail> for TimerInfo {
+    fn from(detail: &TimerDetail) -> Self {
+        Self {
+            hook: detail.hook,
+            context: detail.context,
+            user_data: detail.user_data,
+            flags: detail.flags.bits(),
+        }
+    }
+}
+
 #[repr(C)]
-pub struct s_arr {
+pub struct timer_arr {
     arr: *mut TimerInfo,
     n: usize,
     cap: usize,
 }
 
+#[no_mangle]
+pub extern "C" fn drop_timer_arr(arr: *mut timer_arr) {
+    unsafe {
+        let arr = arr.as_ref().unwrap();
+        Vec::from_raw_parts(arr.arr, arr.n, arr.cap);
+    };
+}
+
 // #[allow(improper_ctypes_definitions)]
 #[no_mangle]
-pub extern "C" fn update_timer() -> s_arr {
+pub extern "C" fn update_timer() -> timer_arr {
     let mut timer_map = TIMER_MAP.write().unwrap();
     let mut timers = timer_map
         .iter_mut()
@@ -190,7 +233,7 @@ pub extern "C" fn update_timer() -> s_arr {
         .collect::<Vec<_>>();
 
     let output = {
-        s_arr {
+        timer_arr {
             arr: timers.as_mut_ptr(),
             n: timers.len(),
             cap: timers.capacity(),
@@ -211,4 +254,75 @@ pub extern "C" fn stop_channel(channel: i32) {
     if let Some(channel) = TIMER_MAP.write().unwrap().get_mut(&channel) {
         channel.stop()
     }
+}
+
+#[no_mangle]
+pub extern "C" fn clear_timer() -> timer_arr {
+    let mut timers = {
+        let mut timer_map = TIMER_MAP.write().unwrap();
+        let timers = timer_map
+            .values_mut()
+            .flat_map(|channel| channel.clear())
+            .map(|detail| detail.into())
+            .collect::<Vec<_>>();
+        timer_map.clear();
+        timers
+    };
+
+    let output = {
+        timer_arr {
+            arr: timers.as_mut_ptr(),
+            n: timers.len(),
+            cap: timers.capacity(),
+        }
+    };
+    std::mem::forget(timers);
+    output
+}
+
+#[no_mangle]
+pub extern "C" fn timer_mapchange() -> timer_arr {
+    let mut timers = {
+        let mut timer_map = TIMER_MAP.write().unwrap();
+        let timers = timer_map
+            .values_mut()
+            .flat_map(|channel| channel.handle_mapchange())
+            .map(|detail| detail.into())
+            .collect::<Vec<_>>();
+        timer_map.clear();
+        timers
+    };
+
+    let output = {
+        timer_arr {
+            arr: timers.as_mut_ptr(),
+            n: timers.len(),
+            cap: timers.capacity(),
+        }
+    };
+    std::mem::forget(timers);
+    output
+}
+
+#[no_mangle]
+pub extern "C" fn get_timer_all() -> timer_arr {
+    let mut timers = {
+        let timer_map = TIMER_MAP.read().unwrap();
+        let timers = timer_map
+            .values()
+            .flat_map(|channel| channel.timers.iter().collect::<Vec<_>>())
+            .map(|Reverse(detail)| detail.into())
+            .collect::<Vec<_>>();
+        timers
+    };
+
+    let output = {
+        timer_arr {
+            arr: timers.as_mut_ptr(),
+            n: timers.len(),
+            cap: timers.capacity(),
+        }
+    };
+    std::mem::forget(timers);
+    output
 }

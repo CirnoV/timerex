@@ -29,165 +29,135 @@
  * Version: $Id$
  */
 
-#include <vector>
-#include <queue>
-#include <chrono>
 #include "extension.h"
 #include <am-thread-utils.h>
 
 #include "timerinfo.h"
 
- /**
+/**
   * @file extension.cpp
   * @brief Implement extension code here.
   */
 
-Extension extension;    /**< Global singleton for extension's main interface */
+Extension extension; /**< Global singleton for extension's main interface */
 
 SMEXT_LINK(&extension);
 
-std::vector<TimerInfo*> sTimerVector;
 IdentityToken_t *g_pCoreToken;
 
 static cell_t CreateTimerEx(IPluginContext *pCtx, const cell_t *params)
 {
-  IPluginFunction *pFunc;
+  int userData = params[3];
   int flags = params[4];
+  int channel = params[5];
 
-  pFunc = pCtx->GetFunctionById(params[2]);
+  IPluginFunction *pFunc = pCtx->GetFunctionById(params[2]);
   if (!pFunc)
   {
     return pCtx->ThrowNativeError("Invalid function id (%X)", params[2]);
   }
 
   int interval = static_cast<int>(sp_ctof(params[1]) * 1000);
-  TimerInfo *timer = new TimerInfo(pFunc, pCtx);
-  create_timer(timer, interval, params[3], flags);
+  create_timer(pFunc, pCtx, pCtx->GetIdentity(), interval, userData, flags, channel);
 
   return 1;
 }
 
 const sp_nativeinfo_t MyNatives[] = {
-  {"CreateTimerEx", CreateTimerEx},
-  {NULL, NULL},
+    {"CreateTimerEx", CreateTimerEx},
+    {NULL, NULL},
 };
 
-void Extension::OnCoreMapEnd() {
-  std::vector<TimerInfo*>::iterator it;
-  for (it = sTimerVector.begin(); it != sTimerVector.end();) {
-    TimerInfo* info = (*it);
-    if (info->mFlags & TIMER_FLAG_NO_MAPCHANGE) {
-      delete info;
-      it = sTimerVector.erase(it);
-    }
-    else {
-      ++it;
-    }
-  }
+void Extension::OnCoreMapEnd()
+{
+  timer_arr arr = timer_mapchange();
+  kill_timer_arr(&arr);
+  drop_timer_arr(&arr);
 }
 
-void ExecFunc(TimerInfo *info) {
-  int flags = info->mFlags;
-
-  IPluginFunction *pFunc = info->mHook;
-  if (!pFunc || !pFunc->IsRunnable()) {
-    delete info;
+void ExecFunc(TimerInfo *info)
+{
+  IPluginFunction *pFunc = (IPluginFunction *)info->hook;
+  if (!pFunc || !pFunc->IsRunnable())
+  {
+    free_timer_data_handle(info);
     return;
   }
 
   cell_t res = static_cast<cell_t>(Pl_Continue);
-  pFunc->PushCell(info->mUserData);
+  pFunc->PushCell(info->user_data);
   pFunc->Execute(&res);
   ResultType result = static_cast<ResultType>(res);
 
-  if (flags & TIMER_REPEAT && result == Pl_Continue) {
-    auto start = std::chrono::system_clock::now();
-    auto time = start + std::chrono::milliseconds(info->mInterval);
-    info->mTime = time;
-    sTimerVector.push_back(info);
-  }
-  else {
-    delete info;
-  }
+  free_timer_data_handle(info);
 }
 
-void RunTimer(bool simulating) {
-  static size_t cacheSize = 0;
-  static std::chrono::system_clock::time_point cacheTime = std::chrono::system_clock::now();
-
-  auto now = std::chrono::system_clock::now();
-  if (!sTimerVector.empty()) {
-    auto vectorSize = sTimerVector.size();
-
-    if (cacheSize != vectorSize || cacheTime <= now) {
-      cacheTime = (std::chrono::system_clock::time_point::max)();
-
-      std::vector<TimerInfo*>::iterator it;
-      for (it = sTimerVector.begin(); it != sTimerVector.end();) {
-        TimerInfo *info = (*it);
-        auto time = info->mTime;
-        if (time <= now) {
-          ExecFunc(info);
-          it = sTimerVector.erase(it);
-        }
-        else {
-          if (time <= cacheTime) {
-            cacheTime = time;
-          }
-          ++it;
-        }
-      }
-      cacheSize = sTimerVector.size();
-    }
+void RunTimer(bool simulating)
+{
+  timer_arr timers = update_timer();
+  for (int i = 0; i < timers.n; i = i + 1)
+  {
+    TimerInfo timerinfo = timers.arr[i];
+    ExecFunc(&timerinfo);
   }
+  drop_timer_arr(&timers);
 }
 
-bool Extension::SDK_OnLoad(char *error, size_t maxlen, bool late) {
+bool Extension::SDK_OnLoad(char *error, size_t maxlen, bool late)
+{
   g_pCoreToken = sharesys->CreateIdentity(sharesys->FindIdentType("CORE"), this);
-  sTimerVector.reserve(1000);
 
   return true;
 }
 
-void Extension::SDK_OnUnload() {
+void Extension::SDK_OnUnload()
+{
   smutils->RemoveGameFrameHook(RunTimer);
 
-  std::vector<TimerInfo*>::iterator it;
-  for (it = sTimerVector.begin(); it != sTimerVector.end();) {
-    TimerInfo *info = (*it);
-    delete info;
-    it = sTimerVector.erase(it);
-  }
+  timer_arr timers = clear_timer();
+  kill_timer_arr(&timers);
+  drop_timer_arr(&timers);
 }
 
-void Extension::SDK_OnAllLoaded() {
+void Extension::SDK_OnAllLoaded()
+{
   plsys->AddPluginsListener(this);
   smutils->AddGameFrameHook(RunTimer);
   sharesys->AddNatives(myself, MyNatives);
 }
 
-void ResetTimer(SourceMod::IdentityToken_t* identity) {
-  std::vector<TimerInfo*>::iterator it;
-  for (it = sTimerVector.begin(); it != sTimerVector.end();) {
-    TimerInfo* info = (*it);
-    if (info->mContext->GetIdentity() == identity) {
+void ResetTimer(SourceMod::IdentityToken_t *identity)
+{
+  timer_arr timers = clear_timer();
+  kill_timer_arr(&timers);
+  std::vector<TimerInfo *>::iterator it;
+  for (it = sTimerVector.begin(); it != sTimerVector.end();)
+  {
+    TimerInfo *info = (*it);
+    if (info->mContext->GetIdentity() == identity)
+    {
       delete info;
       it = sTimerVector.erase(it);
     }
-    else {
+    else
+    {
       ++it;
     }
   }
+  drop_timer_arr(&timers);
 }
 
-void Extension::OnPluginLoaded(IPlugin* plugin) {
+void Extension::OnPluginLoaded(IPlugin *plugin)
+{
   ResetTimer(plugin->GetBaseContext()->GetIdentity());
 }
 
-void Extension::OnPluginUnloaded(IPlugin* plugin) {
+void Extension::OnPluginUnloaded(IPlugin *plugin)
+{
   ResetTimer(plugin->GetBaseContext()->GetIdentity());
 }
 
-void Extension::OnPluginWillUnload(IPlugin* plugin) {
+void Extension::OnPluginWillUnload(IPlugin *plugin)
+{
   ResetTimer(plugin->GetBaseContext()->GetIdentity());
 }
