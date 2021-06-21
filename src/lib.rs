@@ -1,10 +1,20 @@
 use std::cmp::Reverse;
 use std::collections::{BTreeMap, BinaryHeap};
-use std::ffi::c_void;
+use std::ffi;
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
 
+use bitflags::bitflags;
 use once_cell::sync::Lazy;
+
+bitflags! {
+    #[derive(Default)]
+    struct TimerFlags: i32 {
+        const TIMER_REPEAT              = 1 << 0;
+        const TIMER_FLAG_NO_MAPCHANGE   = 1 << 1;
+        const TIMER_DATA_HNDL_CLOSE     = 1 << 9;
+    }
+}
 
 static TIMER_MAP: Lazy<Arc<RwLock<BTreeMap<i32, TimerChannel>>>> = Lazy::new(|| Default::default());
 
@@ -22,7 +32,32 @@ impl TimerChannel {
         if let Some(_) = self.stopped {
             return None;
         }
-        return None;
+
+        let mut elapsed_timers = Vec::new();
+        let mut loop_timers = BinaryHeap::new();
+
+        while let Some(Reverse(timer)) = self.timers.peek() {
+            // BinaryHeap<Reverse<_>> 타입으로 오름차순 정렬되어 있으므로
+            // timer.elapsed가 false일 경우 break
+            let Reverse(timer) = match timer.elapsed() {
+                true => self.timers.pop().unwrap(),
+                false => break,
+            };
+            // TIMER_REPEAT 플래그가 있는 경우 loop_timer에 추가하고
+            // 반복문 종료 후 self.timers에 재등록
+            if timer.flags.contains(TimerFlags::TIMER_REPEAT) {
+                loop_timers.push(Reverse(timer));
+            }
+
+            elapsed_timers.push(timer);
+        }
+        self.timers.append(&mut loop_timers);
+
+        if elapsed_timers.is_empty() {
+            None
+        } else {
+            Some(elapsed_timers)
+        }
     }
     fn stop(&mut self) {
         if let Some(_) = self.stopped {
@@ -31,21 +66,36 @@ impl TimerChannel {
         self.stopped = Some(Instant::now());
     }
     fn resume(&mut self) {
-        if let None = self.stopped {
-            return;
-        }
+        let elasped = match self.stopped {
+            Some(i) => i.elapsed(),
+            None => return,
+        };
         self.stopped = None;
+
+        let mut timers = BinaryHeap::new();
+        while let Some(Reverse(mut timer)) = self.timers.pop() {
+            timer.time += elasped;
+            timers.push(Reverse(timer));
+        }
+        self.timers = timers;
     }
 }
 
+#[derive(Clone, Copy)]
 #[repr(C)]
 pub struct TimerDetail {
-    hook: *const c_void,
-    context: *const c_void,
+    hook: *const ffi::c_void,
+    context: *const ffi::c_void,
     time: Instant,
     interval: Duration,
     user_data: i32,
-    flags: i32,
+    flags: TimerFlags,
+}
+
+impl TimerDetail {
+    fn elapsed(&self) -> bool {
+        self.time.elapsed() >= self.interval
+    }
 }
 
 impl Ord for TimerDetail {
@@ -73,8 +123,8 @@ unsafe impl Sync for TimerDetail {}
 
 #[no_mangle]
 pub extern "C" fn create_timer(
-    hook: *const c_void,
-    context: *const c_void,
+    hook: *const ffi::c_void,
+    context: *const ffi::c_void,
     interval: u32,
     user_data: i32,
     flags: i32,
@@ -86,7 +136,7 @@ pub extern "C" fn create_timer(
         time: Instant::now(),
         interval: Duration::from_millis(interval.into()),
         user_data,
-        flags,
+        flags: unsafe { TimerFlags::from_bits_unchecked(flags) },
     };
 
     {
@@ -104,34 +154,61 @@ pub extern "C" fn create_timer(
 
 #[repr(C)]
 pub struct TimerInfo {
-    hook: *const c_void,
-    context: *const c_void,
+    hook: *const ffi::c_void,
+    context: *const ffi::c_void,
+    user_data: i32,
+    flags: i32,
 }
 
-#[allow(improper_ctypes_definitions)]
-#[no_mangle]
-pub extern "C" fn update_timer() -> Vec<TimerInfo> {
-    let mut timer_map = TIMER_MAP.write().unwrap();
-    let timers = timer_map
-        .iter_mut()
-        .filter_map(|(_key, value): (&i32, &mut TimerChannel)| {
-            if value.stopped {
-                return None;
-            }
+impl From<TimerDetail> for TimerInfo {
+    fn from(detail: TimerDetail) -> Self {
+        Self {
+            hook: detail.hook,
+            context: detail.context,
+            user_data: detail.user_data,
+            flags: detail.flags.bits(),
+        }
+    }
+}
 
-            Some(
-                value
-                    .timers
-                    .iter()
-                    .map(|Reverse(t)| TimerInfo {
-                        hook: t.hook,
-                        context: t.context,
-                    })
-                    .collect::<Vec<_>>(),
-            )
-        })
+#[repr(C)]
+pub struct s_arr {
+    arr: *mut TimerInfo,
+    n: usize,
+    cap: usize,
+}
+
+// #[allow(improper_ctypes_definitions)]
+#[no_mangle]
+pub extern "C" fn update_timer() -> s_arr {
+    let mut timer_map = TIMER_MAP.write().unwrap();
+    let mut timers = timer_map
+        .iter_mut()
+        .filter_map(|(_key, channel): (&i32, &mut TimerChannel)| channel.update())
         .flatten()
+        .map(|detail| detail.into())
         .collect::<Vec<_>>();
 
-    timers
+    let output = {
+        s_arr {
+            arr: timers.as_mut_ptr(),
+            n: timers.len(),
+            cap: timers.capacity(),
+        }
+    };
+    std::mem::forget(timers);
+    output
+}
+
+#[no_mangle]
+pub extern "C" fn stop_timer(channels: *mut i32, len: libc::size_t) {
+    let channels = unsafe { Vec::from_raw_parts(channels, len, len) };
+    channels.iter().for_each(|&c| stop_channel(c))
+}
+
+#[no_mangle]
+pub extern "C" fn stop_channel(channel: i32) {
+    if let Some(channel) = TIMER_MAP.write().unwrap().get_mut(&channel) {
+        channel.stop()
+    }
 }
