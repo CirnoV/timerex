@@ -1,7 +1,8 @@
-use std::collections::BTreeMap;
+use std::cmp::Reverse;
+use std::collections::{BTreeMap, BinaryHeap};
 use std::ffi::c_void;
 use std::sync::{Arc, RwLock};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use once_cell::sync::Lazy;
 
@@ -9,8 +10,32 @@ static TIMER_MAP: Lazy<Arc<RwLock<BTreeMap<i32, TimerChannel>>>> = Lazy::new(|| 
 
 #[derive(Default)]
 pub struct TimerChannel {
-    stopped: bool,
-    timers: Vec<TimerDetail>,
+    stopped: Option<Instant>,
+    timers: BinaryHeap<Reverse<TimerDetail>>,
+}
+
+impl TimerChannel {
+    fn append(&mut self, timer: TimerDetail) {
+        self.timers.push(Reverse(timer));
+    }
+    fn update(&mut self) -> Option<Vec<TimerDetail>> {
+        if let Some(_) = self.stopped {
+            return None;
+        }
+        return None;
+    }
+    fn stop(&mut self) {
+        if let Some(_) = self.stopped {
+            self.resume();
+        }
+        self.stopped = Some(Instant::now());
+    }
+    fn resume(&mut self) {
+        if let None = self.stopped {
+            return;
+        }
+        self.stopped = None;
+    }
 }
 
 #[repr(C)]
@@ -18,10 +43,30 @@ pub struct TimerDetail {
     hook: *const c_void,
     context: *const c_void,
     time: Instant,
-    interval: i32,
+    interval: Duration,
     user_data: i32,
     flags: i32,
 }
+
+impl Ord for TimerDetail {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        (self.time + self.interval).cmp(&(other.time + other.interval))
+    }
+}
+
+impl PartialOrd for TimerDetail {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl PartialEq for TimerDetail {
+    fn eq(&self, other: &Self) -> bool {
+        self.time + self.interval == other.time + other.interval
+    }
+}
+
+impl Eq for TimerDetail {}
 
 unsafe impl Send for TimerDetail {}
 unsafe impl Sync for TimerDetail {}
@@ -30,7 +75,7 @@ unsafe impl Sync for TimerDetail {}
 pub extern "C" fn create_timer(
     hook: *const c_void,
     context: *const c_void,
-    interval: i32,
+    interval: u32,
     user_data: i32,
     flags: i32,
     channel: i32,
@@ -39,7 +84,7 @@ pub extern "C" fn create_timer(
         hook,
         context,
         time: Instant::now(),
-        interval,
+        interval: Duration::from_millis(interval.into()),
         user_data,
         flags,
     };
@@ -53,7 +98,7 @@ pub extern "C" fn create_timer(
                 timer_map.get_mut(&channel).unwrap()
             }
         };
-        timer_list.timers.push(t);
+        timer_list.append(t);
     }
 }
 
@@ -78,7 +123,7 @@ pub extern "C" fn update_timer() -> Vec<TimerInfo> {
                 value
                     .timers
                     .iter()
-                    .map(|t| TimerInfo {
+                    .map(|Reverse(t)| TimerInfo {
                         hook: t.hook,
                         context: t.context,
                     })
