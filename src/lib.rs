@@ -227,6 +227,16 @@ pub struct timer_arr {
     cap: usize,
 }
 
+impl timer_arr {
+    fn from_vec(vec: &mut Vec<TimerInfo>) -> Self {
+        timer_arr {
+            arr: vec.as_mut_ptr(),
+            n: vec.len(),
+            cap: vec.capacity(),
+        }
+    }
+}
+
 #[no_mangle]
 pub extern "C" fn drop_timer_arr(arr: *mut timer_arr) {
     unsafe {
@@ -246,13 +256,7 @@ pub extern "C" fn update_timer() -> timer_arr {
         .map(|detail| detail.into())
         .collect::<Vec<_>>();
 
-    let output = {
-        timer_arr {
-            arr: timers.as_mut_ptr(),
-            n: timers.len(),
-            cap: timers.capacity(),
-        }
-    };
+    let output = timer_arr::from_vec(&mut timers);
     std::mem::forget(timers);
     output
 }
@@ -295,13 +299,7 @@ pub extern "C" fn remove_channel(channel: i32) -> timer_arr {
         }
     };
 
-    let output = {
-        timer_arr {
-            arr: timers.as_mut_ptr(),
-            n: timers.len(),
-            cap: timers.capacity(),
-        }
-    };
+    let output = timer_arr::from_vec(&mut timers);
     std::mem::forget(timers);
     output
 }
@@ -319,13 +317,7 @@ pub extern "C" fn clear_timer() -> timer_arr {
         timers
     };
 
-    let output = {
-        timer_arr {
-            arr: timers.as_mut_ptr(),
-            n: timers.len(),
-            cap: timers.capacity(),
-        }
-    };
+    let output = timer_arr::from_vec(&mut timers);
     std::mem::forget(timers);
     output
 }
@@ -342,13 +334,7 @@ pub extern "C" fn timer_mapchange() -> timer_arr {
         timers
     };
 
-    let output = {
-        timer_arr {
-            arr: timers.as_mut_ptr(),
-            n: timers.len(),
-            cap: timers.capacity(),
-        }
-    };
+    let output = timer_arr::from_vec(&mut timers);
     std::mem::forget(timers);
     output
 }
@@ -365,13 +351,7 @@ pub extern "C" fn timer_pluginload(identity: *mut ffi::c_void) -> timer_arr {
         timers
     };
 
-    let output = {
-        timer_arr {
-            arr: timers.as_mut_ptr(),
-            n: timers.len(),
-            cap: timers.capacity(),
-        }
-    };
+    let output = timer_arr::from_vec(&mut timers);
     std::mem::forget(timers);
     output
 }

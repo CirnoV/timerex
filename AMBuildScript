@@ -191,6 +191,9 @@ class ExtensionConfig(object):
       'uuid.lib',
       'odbc32.lib',
       'odbccp32.lib',
+      'userenv.lib',
+      'ws2_32.lib',
+      'timerex.lib',
     ]
 
     cxx.linkflags += ['/LIBPATH:"' + self.core_path + '"']
@@ -237,8 +240,9 @@ class ExtensionConfig(object):
       os.path.join(self.sm_root, 'public', 'amtl', 'amtl'),
       os.path.join(self.sm_root, 'public', 'amtl'),
     ]
-    compiler.postlink += [compiler.Dep(
-      os.path.join(self.core_path, 'libtimerex.a'))]
+    if builder.target_platform != 'windows':
+      compiler.postlink += [compiler.Dep(
+        os.path.join(self.core_path, 'libtimerex.a'))]
     return compiler
 
   def ConfigureForHL2(self, binary):

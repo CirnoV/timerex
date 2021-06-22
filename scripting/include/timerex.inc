@@ -14,13 +14,13 @@ typeset TimerEx
   function Action();
 }
 
-native void CreateTimerEx(float interval, TimerEx func, any data=INVALID_HANDLE, int flags=0, int channel = TIMER_CHANNEL_WORLD);
+native void CreateTimerEx(float interval, TimerEx func, any data = INVALID_HANDLE, int flags = 0, int channel = TIMER_CHANNEL_WORLD);
 
-stock void CreateDataTimerEx(float interval, TimerEx func, Handle &datapack, int flags=0)
+stock void CreateDataTimerEx(float interval, TimerEx func, Handle &datapack, int flags = 0, int channel = TIMER_CHANNEL_WORLD)
 {
 	datapack = new DataPack();
 	flags |= TIMER_DATA_HNDL_CLOSE;
-	CreateTimerEx(interval, func, datapack, flags);
+	CreateTimerEx(interval, func, datapack, flags, channel);
 }
 
 native void PauseTimer(int[] channels, int length);
