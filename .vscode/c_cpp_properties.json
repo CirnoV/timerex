@@ -1,0 +1,24 @@
+{
+    "configurations": [
+        {
+            "name": "Win32",
+            "includePath": [
+                "${workspaceFolder}/timerex",
+                "${workspaceFolder}/../sourcemod/public",
+                "${workspaceFolder}/../sourcemod/public/extensions",
+                "${workspaceFolder}/../sourcemod/sourcepawn/include",
+                "${workspaceFolder}/../sourcemod/public/amtl/amtl",
+                "${workspaceFolder}/../sourcemod/public/amtl"
+            ],
+            "defines": [
+                "_DEBUG",
+                "UNICODE",
+                "_UNICODE"
+            ],
+            "cStandard": "c17",
+            "cppStandard": "c++17",
+            "intelliSenseMode": "windows-msvc-x86"
+        }
+    ],
+    "version": 4
+}

@@ -221,5 +221,3 @@ _Pvt_Extensions
 
 /target
 Cargo.lock
-
-.vscode/c_cpp_properties.json
