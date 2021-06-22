@@ -30,9 +30,7 @@
  */
 
 #include "extension.h"
-#include <am-thread-utils.h>
-
-#include "timerinfo.h"
+#include "bindings.h"
 
 /**
   * @file extension.cpp
@@ -44,6 +42,32 @@ Extension extension; /**< Global singleton for extension's main interface */
 SMEXT_LINK(&extension);
 
 IdentityToken_t *g_pCoreToken;
+
+void free_timer_data_handle(TimerInfo *info)
+{
+  if (info->flags & TIMER_DATA_HNDL_CLOSE)
+  {
+    HandleSecurity sec;
+    Handle_t usrhndl = static_cast<Handle_t>(info->user_data);
+
+    sec.pOwner = ((IPluginContext *)info->context)->GetIdentity();
+    sec.pIdentity = g_pCoreToken;
+
+    HandleError herr = handlesys->FreeHandle(usrhndl, &sec);
+    if (herr != HandleError_None)
+    {
+      smutils->LogError(myself, "Invalid data handle %x (error %d) passed during timer end with TIMER_DATA_HNDL_CLOSE", usrhndl, herr);
+    }
+  }
+}
+
+void kill_timer_arr(timer_arr *arr)
+{
+  for (unsigned int i = 0; i < arr->n; i = i + 1)
+  {
+    free_timer_data_handle(&arr->arr[i]);
+  }
+}
 
 static cell_t CreateTimerEx(IPluginContext *pCtx, const cell_t *params)
 {
@@ -136,7 +160,7 @@ void ExecFunc(TimerInfo *info)
 void RunTimer(bool simulating)
 {
   timer_arr timers = update_timer();
-  for (cell_t i = 0; i < timers.n; i = i + 1)
+  for (unsigned int i = 0; i < timers.n; i = i + 1)
   {
     TimerInfo timerinfo = timers.arr[i];
     ExecFunc(&timerinfo);

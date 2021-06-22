@@ -230,16 +230,15 @@ class ExtensionConfig(object):
 	
   def ConfigureForExtension(self, context, compiler):
     compiler.cxxincludes += [
-      os.path.join(context.currentSourcePath),
-      os.path.join(context.currentSourcePath, 'sdk'),
+      os.path.join(context.currentSourcePath, 'timerex'),
       os.path.join(self.sm_root, 'public'),
       os.path.join(self.sm_root, 'public', 'extensions'),
       os.path.join(self.sm_root, 'sourcepawn', 'include'),
       os.path.join(self.sm_root, 'public', 'amtl', 'amtl'),
       os.path.join(self.sm_root, 'public', 'amtl'),
     ]
-    # compiler.postlink += [compiler.Dep(
-    #   os.path.join(self.core_path, 'timerex.lib'))]
+    compiler.postlink += [compiler.Dep(
+      os.path.join(self.core_path, 'libtimerex.a'))]
     return compiler
 
   def ConfigureForHL2(self, binary):

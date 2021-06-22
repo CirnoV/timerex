@@ -5,7 +5,6 @@ from ambuild2 import run
 # Simple extensions do not need to modify this file.
 
 builder = run.PrepareBuild(sourcePath=sys.path[0])
-builder.default_arch = 'x86'
 
 builder.options.add_option('--core-path', type=str, dest='core_path', default=None,
                            help='Core library path')

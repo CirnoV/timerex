@@ -5,9 +5,7 @@ projectName = 'timerex'
 
 # smsdk_ext.cpp will be automatically added later
 sourceFiles = [
-  'timerex/extension.cpp',
-  'timerex/timerinfo.cpp',
-  'timerex/smsdk_ext.cpp'
+  'timerex/extension.cpp'
 ]
 
 ###############
@@ -16,12 +14,12 @@ sourceFiles = [
 
 project = Extension.HL2Project(builder, projectName + '.ext')
 
-#if os.path.isfile(os.path.join(builder.currentSourcePath, 'sdk', 'smsdk_ext.cpp')):
-#  # Use the copy included in the project
-#  project.sources += [os.path.join('sdk', 'smsdk_ext.cpp')]
-#else:
-#  # Use the copy included with SM 1.6 and newer
-#  project.sources += [os.path.join(Extension.sm_root, 'public', 'smsdk_ext.cpp')]*/
+if os.path.isfile(os.path.join(builder.currentSourcePath, 'sdk', 'smsdk_ext.cpp')):
+  # Use the copy included in the project
+  project.sources += [os.path.join('sdk', 'smsdk_ext.cpp')]
+else:
+  # Use the copy included with SM 1.6 and newer
+  project.sources += [os.path.join(Extension.sm_root, 'public', 'smsdk_ext.cpp')]
 
 project.sources += sourceFiles
 

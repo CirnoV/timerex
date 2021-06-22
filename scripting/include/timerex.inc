@@ -25,6 +25,10 @@ stock void CreateDataTimerEx(float interval, TimerEx func, Handle &datapack, int
 
 native void PauseTimer(int[] channels, int length);
 
+native void ResumeTimer(int[] channels, int length);
+
+native void RemoveTimerChannel(int channel);
+
 public Extension __ext_timerex = 
 {
 	name = "timerex",
