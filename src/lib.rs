@@ -38,7 +38,6 @@ impl TimerChannel {
         }
 
         let mut elapsed_timers = Vec::new();
-        let mut loop_timers = BinaryHeap::new();
 
         while let Some(Reverse(timer)) = self.timers.peek() {
             // BinaryHeap<Reverse<_>> 타입으로 오름차순 정렬되어 있으므로
@@ -47,15 +46,9 @@ impl TimerChannel {
                 true => self.timers.pop().unwrap(),
                 false => break,
             };
-            // TIMER_REPEAT 플래그가 있는 경우 loop_timer에 추가하고
-            // 반복문 종료 후 self.timers에 재등록
-            if timer.flags.contains(TimerFlags::TIMER_REPEAT) {
-                loop_timers.push(Reverse(timer));
-            }
 
             elapsed_timers.push(timer);
         }
-        self.timers.append(&mut loop_timers);
 
         if elapsed_timers.is_empty() {
             None
@@ -126,6 +119,7 @@ pub struct TimerDetail {
     interval: Duration,
     user_data: i32,
     flags: TimerFlags,
+    channel: i32,
 }
 
 impl TimerDetail {
@@ -175,6 +169,7 @@ pub extern "C" fn create_timer(
         interval: Duration::from_millis(interval.into()),
         user_data,
         flags: unsafe { TimerFlags::from_bits_unchecked(flags) },
+        channel,
     };
 
     {
@@ -194,8 +189,11 @@ pub extern "C" fn create_timer(
 pub struct TimerInfo {
     hook: *mut ffi::c_void,
     context: *mut ffi::c_void,
+    identity: *mut ffi::c_void,
+    interval: u32,
     user_data: i32,
     flags: i32,
+    channel: i32,
 }
 
 impl From<TimerDetail> for TimerInfo {
@@ -203,8 +201,11 @@ impl From<TimerDetail> for TimerInfo {
         Self {
             hook: detail.hook,
             context: detail.context,
+            identity: detail.identity,
+            interval: detail.interval.as_millis() as u32,
             user_data: detail.user_data,
             flags: detail.flags.bits(),
+            channel: detail.channel,
         }
     }
 }
@@ -214,8 +215,11 @@ impl From<&TimerDetail> for TimerInfo {
         Self {
             hook: detail.hook,
             context: detail.context,
+            identity: detail.identity,
+            interval: detail.interval.as_millis() as u32,
             user_data: detail.user_data,
             flags: detail.flags.bits(),
+            channel: detail.channel,
         }
     }
 }

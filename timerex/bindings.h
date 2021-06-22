@@ -7,8 +7,11 @@
 struct TimerInfo {
   void *hook;
   void *context;
+  void *identity;
+  uint32_t interval;
   int32_t user_data;
   int32_t flags;
+  int32_t channel;
 };
 
 struct timer_arr {

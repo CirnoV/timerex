@@ -154,7 +154,14 @@ void ExecFunc(TimerInfo *info)
     pFunc->Execute(&res);
     ResultType result = static_cast<ResultType>(res);
 
-    free_timer_data_handle(info);
+    if (info->flags & TIMER_REPEAT && result == Pl_Continue)
+    {
+        create_timer(info->hook, info->context, info->identity, info->interval, info->user_data, info->flags, info->channel);
+    }
+    else
+    {
+        free_timer_data_handle(info);
+    }
 }
 
 void RunTimer(bool simulating)
