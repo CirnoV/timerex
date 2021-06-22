@@ -3,7 +3,7 @@
 #endif
 #define _timerex_included
 
-#define TIMER_EX_CHANNEL_WORLD 0
+#define TIMER_CHANNEL_WORLD 0
 
 typeset TimerEx
 {
