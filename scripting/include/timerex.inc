@@ -29,7 +29,7 @@ native void ResumeTimer(int[] channels, int length);
 
 native void RemoveTimerChannel(int channel);
 
-public Extension __ext_timerex = 
+public Extension __ext_timerex =
 {
 	name = "timerex",
 	file = "timerex.ext",
