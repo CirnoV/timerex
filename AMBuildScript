@@ -31,6 +31,7 @@ class ExtensionConfig(object):
     self.generated_headers = None
     self.mms_root = None
     self.sm_root = None
+    self.core_path = None
 
   @property
   def tag(self):
@@ -64,6 +65,12 @@ class ExtensionConfig(object):
     if not self.mms_root or not os.path.isdir(self.mms_root):
       raise Exception('Could not find a source copy of Metamod:Source')
     self.mms_root = Normalize(self.mms_root)
+
+  def detectCore(self):
+    if builder.options.core_path:
+        self.core_path = Normalize(builder.options.core_path)
+    else:
+        raise Exception('Could not find core library')
 
   def configure(self):
     cxx = builder.DetectCompilers()
@@ -184,7 +191,12 @@ class ExtensionConfig(object):
       'uuid.lib',
       'odbc32.lib',
       'odbccp32.lib',
+      'userenv.lib',
+      'ws2_32.lib',
+      'timerex.lib',
     ]
+
+    cxx.linkflags += ['/LIBPATH:"' + self.core_path + '"']
 
     if builder.options.opt == '1':
       cxx.cflags += ['/Ox', '/Zo']
@@ -221,14 +233,16 @@ class ExtensionConfig(object):
 	
   def ConfigureForExtension(self, context, compiler):
     compiler.cxxincludes += [
-      os.path.join(context.currentSourcePath),
-      os.path.join(context.currentSourcePath, 'sdk'),
+      os.path.join(context.currentSourcePath, 'timerex'),
       os.path.join(self.sm_root, 'public'),
       os.path.join(self.sm_root, 'public', 'extensions'),
       os.path.join(self.sm_root, 'sourcepawn', 'include'),
       os.path.join(self.sm_root, 'public', 'amtl', 'amtl'),
       os.path.join(self.sm_root, 'public', 'amtl'),
     ]
+    if builder.target_platform != 'windows':
+      compiler.postlink += [compiler.Dep(
+        os.path.join(self.core_path, 'libtimerex.a'))]
     return compiler
 
   def ConfigureForHL2(self, binary):
@@ -271,6 +285,7 @@ class ExtensionConfig(object):
 
 Extension = ExtensionConfig()
 Extension.detectSDKs()
+Extension.detectCore()
 Extension.configure()
 
 # Add additional buildscripts here

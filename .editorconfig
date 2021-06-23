@@ -1,0 +1,18 @@
+# editorconfig.org
+root = true
+
+[*.{h,cpp,inc,rs,py}]
+charset = utf-8
+end_of_line = lf
+indent_style = space
+indent_size = 4
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+[/timerex/bindings.h]
+charset = unset
+end_of_line = unset
+indent_style = unset
+indent_size = unset
+insert_final_newline = unset
+trim_trailing_whitespace = unset
