@@ -1,9 +1,9 @@
 #![allow(non_upper_case_globals)]
 #![allow(non_camel_case_types)]
 #![allow(non_snake_case)]
+#![feature(drain_filter)]
 
-use std::cmp::Reverse;
-use std::collections::{BTreeMap, BinaryHeap};
+use std::collections::BTreeMap;
 use std::ffi;
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
@@ -23,41 +23,30 @@ bitflags! {
 static TIMER_MAP: Lazy<Arc<RwLock<BTreeMap<i32, TimerChannel>>>> = Lazy::new(|| Default::default());
 
 pub struct TimerChannel {
-    stopped: bool,
-    timers: BinaryHeap<Reverse<TimerDetail>>,
+    stopped: Option<Instant>,
+    timers: Vec<TimerDetail>,
 }
 
 impl Default for TimerChannel {
     fn default() -> Self {
         Self {
-            stopped: false,
-            timers: BinaryHeap::with_capacity(256),
+            stopped: None,
+            timers: Vec::with_capacity(256),
         }
     }
 }
 
 impl TimerChannel {
     fn append(&mut self, timer: TimerDetail) {
-        self.timers.push(Reverse(timer));
+        self.timers.push(timer);
     }
     fn update(&mut self) -> Option<Vec<TimerDetail>> {
-        if self.stopped {
+        if let Some(_) = self.stopped {
             return None;
         }
 
-        let mut elapsed_timers = Vec::new();
-
-        while let Some(Reverse(timer)) = self.timers.peek() {
-            // BinaryHeap<Reverse<_>> 타입으로 오름차순 정렬되어 있으므로
-            // timer.elapsed가 false일 경우 break
-            let Reverse(timer) = match timer.elapsed() {
-                true => self.timers.pop().unwrap(),
-                false => break,
-            };
-
-            elapsed_timers.push(timer);
-        }
-
+        let elapsed_timers: Vec<TimerDetail> =
+            self.timers.drain_filter(|timer| timer.elapsed()).collect();
         if elapsed_timers.is_empty() {
             None
         } else {
@@ -65,46 +54,35 @@ impl TimerChannel {
         }
     }
     fn pause(&mut self) {
-        self.stopped = true;
+        if let Some(_) = self.stopped {
+            self.resume();
+        }
+        self.stopped = Some(Instant::now());
     }
     fn resume(&mut self) {
-        self.stopped = false;
-
-        let mut timers = BinaryHeap::new();
-        while let Some(Reverse(mut timer)) = self.timers.pop() {
-            timer.time = Instant::now();
-            timers.push(Reverse(timer));
+        if let Some(instant) = self.stopped {
+            for timer in self.timers.iter_mut() {
+                timer.interval += instant.elapsed();
+            }
+            self.stopped = None;
         }
-        self.timers = timers;
     }
     fn clear(&mut self) -> Vec<TimerDetail> {
-        self.timers.drain().map(|Reverse(timer)| timer).collect()
+        self.timers.drain(..).collect()
     }
     fn handle_mapchange(&mut self) -> Vec<TimerDetail> {
-        let mut timers = BinaryHeap::new();
-        let mut drop_timers = Vec::new();
-        for Reverse(timer) in self.timers.drain() {
-            if timer.flags.contains(TimerFlags::TIMER_FLAG_NO_MAPCHANGE) {
-                timers.push(Reverse(timer));
-            } else {
-                drop_timers.push(timer);
-            }
-        }
-        self.timers = timers;
+        let drop_timers = self
+            .timers
+            .drain_filter(|timer| timer.flags.contains(TimerFlags::TIMER_FLAG_NO_MAPCHANGE))
+            .collect::<Vec<_>>();
 
         drop_timers
     }
     fn handle_pluginload(&mut self, identity: *mut ffi::c_void) -> Vec<TimerDetail> {
-        let mut timers = BinaryHeap::new();
-        let mut drop_timers = Vec::new();
-        for Reverse(timer) in self.timers.drain() {
-            if timer.identity == identity {
-                drop_timers.push(timer);
-            } else {
-                timers.push(Reverse(timer));
-            }
-        }
-        self.timers = timers;
+        let drop_timers = self
+            .timers
+            .drain_filter(|timer| timer.identity == identity)
+            .collect::<Vec<_>>();
 
         drop_timers
     }
@@ -118,6 +96,7 @@ pub struct TimerDetail {
     identity: *mut ffi::c_void,
     time: Instant,
     interval: Duration,
+    _interval: Duration,
     user_data: i32,
     flags: TimerFlags,
     channel: i32,
@@ -168,6 +147,7 @@ pub extern "C" fn create_timer(
         identity,
         time: Instant::now(),
         interval: Duration::from_millis(interval.into()),
+        _interval: Duration::from_millis(interval.into()),
         user_data,
         flags: unsafe { TimerFlags::from_bits_unchecked(flags) },
         channel,
@@ -197,16 +177,16 @@ pub struct TimerInfo {
     channel: i32,
 }
 
-impl From<TimerDetail> for TimerInfo {
-    fn from(detail: TimerDetail) -> Self {
-        Self {
-            hook: detail.hook,
-            context: detail.context,
-            identity: detail.identity,
-            interval: detail.interval.as_millis() as u32,
-            user_data: detail.user_data,
-            flags: detail.flags.bits(),
-            channel: detail.channel,
+impl TimerDetail {
+    fn to_info(self) -> TimerInfo {
+        TimerInfo {
+            hook: self.hook,
+            context: self.context,
+            identity: self.identity,
+            interval: self._interval.as_millis() as u32,
+            user_data: self.user_data,
+            flags: self.flags.bits(),
+            channel: self.channel,
         }
     }
 }
@@ -217,7 +197,7 @@ impl From<&TimerDetail> for TimerInfo {
             hook: detail.hook,
             context: detail.context,
             identity: detail.identity,
-            interval: detail.interval.as_millis() as u32,
+            interval: detail._interval.as_millis() as u32,
             user_data: detail.user_data,
             flags: detail.flags.bits(),
             channel: detail.channel,
@@ -258,7 +238,7 @@ pub extern "C" fn update_timer() -> timer_arr {
         .iter_mut()
         .filter_map(|(_key, channel): (&i32, &mut TimerChannel)| channel.update())
         .flatten()
-        .map(|detail| detail.into())
+        .map(|detail| detail.to_info())
         .collect::<Vec<_>>();
 
     let output = timer_arr::from_vec(&mut timers);
@@ -305,7 +285,7 @@ pub extern "C" fn remove_channel(channel: i32) -> timer_arr {
             Some(mut channel) => channel
                 .clear()
                 .into_iter()
-                .map(|detail| detail.into())
+                .map(|detail| detail.to_info())
                 .collect(),
             None => Vec::new(),
         }
@@ -323,7 +303,7 @@ pub extern "C" fn clear_timer() -> timer_arr {
         let timers = timer_map
             .values_mut()
             .flat_map(|channel| channel.clear())
-            .map(|detail| detail.into())
+            .map(|detail| detail.to_info())
             .collect::<Vec<_>>();
         timer_map.clear();
         timers
@@ -341,7 +321,7 @@ pub extern "C" fn timer_mapchange() -> timer_arr {
         let timers = timer_map
             .values_mut()
             .flat_map(|channel| channel.handle_mapchange())
-            .map(|detail| detail.into())
+            .map(|detail| detail.to_info())
             .collect::<Vec<_>>();
         timers
     };
@@ -358,7 +338,7 @@ pub extern "C" fn timer_pluginload(identity: *mut ffi::c_void) -> timer_arr {
         let timers = timer_map
             .values_mut()
             .flat_map(|channel| channel.handle_pluginload(identity))
-            .map(|detail| detail.into())
+            .map(|detail| detail.to_info())
             .collect::<Vec<_>>();
         timers
     };
