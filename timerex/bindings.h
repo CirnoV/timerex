@@ -38,6 +38,8 @@ void pause_timer(int32_t *channels, size_t len);
 
 void resume_timer(int32_t *channels, size_t len);
 
+void resume_timer_all();
+
 timer_arr remove_channel(int32_t channel);
 
 timer_arr clear_timer();

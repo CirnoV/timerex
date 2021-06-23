@@ -34,6 +34,8 @@ stock void PauseTimerChannel(int channel)
 
 native void ResumeTimer(int[] channels, int length);
 
+native void ResumeTimerAll();
+
 stock void ResumeTimerChannel(int channel)
 {
 	int channels[1];

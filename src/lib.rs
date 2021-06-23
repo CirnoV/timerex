@@ -24,7 +24,7 @@ static TIMER_MAP: Lazy<Arc<RwLock<BTreeMap<i32, TimerChannel>>>> = Lazy::new(|| 
 
 #[derive(Default)]
 pub struct TimerChannel {
-    stopped: Option<Instant>,
+    stopped: bool,
     timers: BinaryHeap<Reverse<TimerDetail>>,
 }
 
@@ -33,7 +33,7 @@ impl TimerChannel {
         self.timers.push(Reverse(timer));
     }
     fn update(&mut self) -> Option<Vec<TimerDetail>> {
-        if let Some(_) = self.stopped {
+        if self.stopped {
             return None;
         }
 
@@ -57,21 +57,14 @@ impl TimerChannel {
         }
     }
     fn pause(&mut self) {
-        if let Some(_) = self.stopped {
-            self.resume();
-        }
-        self.stopped = Some(Instant::now());
+        self.stopped = true;
     }
     fn resume(&mut self) {
-        let elasped = match self.stopped {
-            Some(i) => i.elapsed(),
-            None => return,
-        };
-        self.stopped = None;
+        self.stopped = false;
 
         let mut timers = BinaryHeap::new();
         while let Some(Reverse(mut timer)) = self.timers.pop() {
-            timer.time += elasped;
+            timer.time = Instant::now();
             timers.push(Reverse(timer));
         }
         self.timers = timers;
@@ -130,7 +123,7 @@ impl TimerDetail {
 
 impl Ord for TimerDetail {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        (self.time + self.interval).cmp(&(other.time + other.interval))
+        (self.time.elapsed() + self.interval).cmp(&(other.time.elapsed() + other.interval))
     }
 }
 
@@ -142,7 +135,7 @@ impl PartialOrd for TimerDetail {
 
 impl PartialEq for TimerDetail {
     fn eq(&self, other: &Self) -> bool {
-        self.time + self.interval == other.time + other.interval
+        self.time.elapsed() + self.interval == other.time.elapsed() + other.interval
     }
 }
 
@@ -267,7 +260,7 @@ pub extern "C" fn update_timer() -> timer_arr {
 
 #[no_mangle]
 pub extern "C" fn pause_timer(channels: *mut i32, len: libc::size_t) {
-    let channels = unsafe { Vec::from_raw_parts(channels, len, len) };
+    let channels = unsafe { std::slice::from_raw_parts(channels, len) };
     channels.iter().for_each(|&c| pause_channel(c))
 }
 
@@ -279,8 +272,15 @@ pub fn pause_channel(channel: i32) {
 
 #[no_mangle]
 pub extern "C" fn resume_timer(channels: *mut i32, len: libc::size_t) {
-    let channels = unsafe { Vec::from_raw_parts(channels, len, len) };
+    let channels = unsafe { std::slice::from_raw_parts(channels, len) };
     channels.iter().for_each(|&c| resume_channel(c))
+}
+
+#[no_mangle]
+pub extern "C" fn resume_timer_all() {
+    for (_key, channel) in TIMER_MAP.write().unwrap().iter_mut() {
+        channel.resume();
+    }
 }
 
 pub fn resume_channel(channel: i32) {

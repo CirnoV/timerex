@@ -115,6 +115,13 @@ static cell_t ResumeTimer(IPluginContext *pCtx, const cell_t *params)
     return 1;
 }
 
+static cell_t ResumeTimerAll(IPluginContext *pCtx, const cell_t *params)
+{
+    resume_timer_all();
+
+    return 1;
+}
+
 static cell_t RemoveTimerChannel(IPluginContext *pCtx, const cell_t *params)
 {
     cell_t channel = params[1];
@@ -129,6 +136,7 @@ const sp_nativeinfo_t MyNatives[] = {
     {"CreateTimerEx", CreateTimerEx},
     {"PauseTimer", PauseTimer},
     {"ResumeTimer", ResumeTimer},
+    {"ResumeTimerAll", ResumeTimerAll},
     {"RemoveTimerChannel", RemoveTimerChannel},
     {NULL, NULL},
 };
