@@ -22,10 +22,18 @@ bitflags! {
 
 static TIMER_MAP: Lazy<Arc<RwLock<BTreeMap<i32, TimerChannel>>>> = Lazy::new(|| Default::default());
 
-#[derive(Default)]
 pub struct TimerChannel {
     stopped: bool,
     timers: BinaryHeap<Reverse<TimerDetail>>,
+}
+
+impl Default for TimerChannel {
+    fn default() -> Self {
+        Self {
+            stopped: false,
+            timers: BinaryHeap::with_capacity(256),
+        }
+    }
 }
 
 impl TimerChannel {
