@@ -1,6 +1,6 @@
 # TimerEX
 
-TimerEx는 소스:엔진 커뮤니티 서버를 위한 [SourceMod](https://www.sourcemod.net/) 타이머 확장입니다. 정확한 타이밍과 일시정지 기능을 제공합니다.
+TimerEx는 소스:엔진 커뮤니티 서버를 위한 [SourceMod](https://www.sourcemod.net/)용 타이머 확장입니다. 정확한 타이밍과 일시정지 기능을 제공합니다.
 
 ## 정확한 타이밍
 
