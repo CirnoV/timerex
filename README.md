@@ -6,10 +6,10 @@ TimerEx는 소스:엔진 커뮤니티 서버를 위한 [SourceMod](https://www.s
 
 TimerEx는 자체 타이머 구현으로 SourceMod 기본 타이머보다 정확합니다.
 
-### SourceMod 기본 타이머
+### SourceMod 기본 타이머 (YouTube)
 [![SourceMod Timer](http://i3.ytimg.com/vi/-vztzMhe0ho/hqdefault.jpg)](https://www.youtube.com/watch?v=-vztzMhe0ho)
 
-### TimerEx
+### TimerEx (YouTube)
 [![TimerEx](http://i3.ytimg.com/vi/j8v3W-9X2I8/hqdefault.jpg)](https://www.youtube.com/watch?v=j8v3W-9X2I8)
 
 ## `Handle` 없음
