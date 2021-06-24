@@ -4,7 +4,7 @@ TimerEx는 소스:엔진 커뮤니티 서버를 위한 [SourceMod](https://www.s
 
 ## 정확한 타이밍
 
-TimerEx는 자체 타이머 구현으로 기본 타이머보다 정확한 타이밍에 함수를 실행합니다.
+TimerEx는 자체 타이머 구현으로 SourceMod 기본 타이머보다 정확합니다.
 
 ### SourceMod 기본 타이머
 [![SourceMod Timer](http://i3.ytimg.com/vi/-vztzMhe0ho/hqdefault.jpg)](https://www.youtube.com/watch?v=-vztzMhe0ho)
