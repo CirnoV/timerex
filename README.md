@@ -18,13 +18,11 @@ TimerEx는 `Handle`을 생성하지 않으며 `KillTimer`, `TriggerTimer` 등의
 
 ```sourcepawn
 public void OnClientConnected(int client) {
-  CreateTimerEx(1.0, Foo, GetClientSerial(client));
+  // Warning: tag mismatch
+  Handle timer = CreateTimerEx(1.0, Foo, GetClientSerial(client));
 }
 
-public Action Foo(int serial) {
-  int client = GetClientFromSerial(serial);
-  // ...
-}
+public Action Foo(int serial) { /* ... */ }
 ```
 
 ## `interval` 제한 없음
