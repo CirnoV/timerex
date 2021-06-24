@@ -25,23 +25,13 @@ stock void CreateDataTimerEx(float interval, TimerEx func, Handle &datapack, int
 
 native void PauseTimer(int[] channels, int length);
 
-stock void PauseTimerChannel(int channel)
-{
-	int channels[1];
-	channels[0] = channel;
-	PauseTimer(channels, 1);
-}
+native void PauseTimerChannel(int channel);
 
 native void ResumeTimer(int[] channels, int length);
 
 native void ResumeTimerAll();
 
-stock void ResumeTimerChannel(int channel)
-{
-	int channels[1];
-	channels[0] = channel;
-	ResumeTimer(channels, 1);
-}
+native void ResumeTimerChannel(int channel);
 
 native void RemoveTimerChannel(int channel);
 

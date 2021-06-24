@@ -252,7 +252,8 @@ pub extern "C" fn pause_timer(channels: *mut i32, len: libc::size_t) {
     channels.iter().for_each(|&c| pause_channel(c))
 }
 
-pub fn pause_channel(channel: i32) {
+#[no_mangle]
+pub extern "C" fn pause_channel(channel: i32) {
     if let Some(channel) = TIMER_MAP.write().unwrap().get_mut(&channel) {
         channel.pause()
     }
@@ -271,7 +272,8 @@ pub extern "C" fn resume_timer_all() {
     }
 }
 
-pub fn resume_channel(channel: i32) {
+#[no_mangle]
+pub extern "C" fn resume_channel(channel: i32) {
     if let Some(channel) = TIMER_MAP.write().unwrap().get_mut(&channel) {
         channel.resume()
     }

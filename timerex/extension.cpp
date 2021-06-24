@@ -101,6 +101,14 @@ static cell_t PauseTimer(IPluginContext *pCtx, const cell_t *params)
     return 1;
 }
 
+static cell_t PauseTimerChannel(IPluginContext *pCtx, const cell_t *params)
+{
+    cell_t channel = params[1];
+    pause_channel(channel);
+
+    return 1;
+}
+
 static cell_t ResumeTimer(IPluginContext *pCtx, const cell_t *params)
 {
     cell_t *array = NULL;
@@ -111,6 +119,14 @@ static cell_t ResumeTimer(IPluginContext *pCtx, const cell_t *params)
     }
     pCtx->LocalToPhysAddr(params[1], &array);
     resume_timer(array, length);
+
+    return 1;
+}
+
+static cell_t ResumeTimerChannel(IPluginContext *pCtx, const cell_t *params)
+{
+    cell_t channel = params[1];
+    resume_channel(channel);
 
     return 1;
 }
@@ -135,7 +151,9 @@ static cell_t RemoveTimerChannel(IPluginContext *pCtx, const cell_t *params)
 const sp_nativeinfo_t MyNatives[] = {
     {"CreateTimerEx", CreateTimerEx},
     {"PauseTimer", PauseTimer},
+    {"PauseTimerChannel", PauseTimerChannel},
     {"ResumeTimer", ResumeTimer},
+    {"ResumeTimerChannel", ResumeTimerChannel},
     {"ResumeTimerAll", ResumeTimerAll},
     {"RemoveTimerChannel", RemoveTimerChannel},
     {NULL, NULL},
