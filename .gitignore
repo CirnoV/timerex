@@ -221,3 +221,5 @@ _Pvt_Extensions
 
 /target
 Cargo.lock
+
+timerex/bindings.h
