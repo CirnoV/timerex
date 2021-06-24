@@ -37,10 +37,10 @@ CreateTimer(0.05, Foo);
 // TimerEX
 CreateTimerEx(0.05, Bar);
 
-// interval 제한으로 0.1초 후에 발동
+// interval 제한으로 0.1초 뒤에 호출
 public Action Foo(Handle timer) { /* ... */ }
 
-// 0.05초 후에 발동
+// 0.05초 뒤에 호출
 public Action Bar() { /* ... */ }
 ```
 
@@ -54,6 +54,7 @@ CreateTimerEx(1.0, Foo, serial, .channel = serial);
 PauseTimerChannel(serial);
 CreateTimerEx(3.0, Resume, serial);
 
+// 4초 뒤에 호출
 public Action Foo(int serial) { /* ... */ }
 
 public Action Resume(int serial) {
