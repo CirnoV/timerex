@@ -4,7 +4,7 @@ TimerEx는 소스:엔진 커뮤니티 서버를 위한 [SourceMod](https://www.s
 
 ## 정확한 타이밍
 
-TimerEx는 자체 타이머 구현으로 SourceMod 기본 타이머보다 정확합니다.
+TimerEx는 SourceMod 기본 타이머보다 빠르고 정확한 타이머 구현을 목표로 제작되었으며, 엔진 시간에 따른 밀림 현상이 없습니다.
 
 ### SourceMod 기본 타이머 (YouTube)
 [![SourceMod Timer](http://i3.ytimg.com/vi/-vztzMhe0ho/hqdefault.jpg)](https://www.youtube.com/watch?v=-vztzMhe0ho)
@@ -27,9 +27,7 @@ public Action Foo(int serial) { /* ... */ }
 
 ## `interval` 제한 없음
 
-TimerEx는 기본 타이머와 달리 0.1초 미만의 시간을 지원합니다.
-> ⚠️서버가 `tickrate` 기반으로 작동하기 때문에 실질적으로 `1 / tickrate`초 보다 작은 값으로 설정 할 수 없습니다.
-> 따라서 반복 주기가 너무 짧은 타이머는 서버에 큰 부하를 줄 수 있으니 주의하시기 바랍니다.
+최소 간격이 0.1초인 기본 타이머와 달리 TimerEx에는 이러한 제한이 없습니다. 그러나 서버가 `tickrate` 기반으로 작동하기 때문에 실질적으로 `1 / tickrate`초 보다 작은 값으로 설정 할 수 없으며, 반복 주기가 너무 짧은 타이머는 서버에 큰 부하를 줄 수 있으니 주의하시기 바랍니다.
 
 ```sourcepawn
 // SourceMod 기본 타이머
