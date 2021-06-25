@@ -1,7 +1,6 @@
 # vim: set sts=2 ts=8 sw=2 tw=99 et ft=python:
 import os, sys
-
-# Simple extensions do not need to modify this file.
+import traceback
 
 def ResolveEnvPath(env, folder):
   if env in os.environ:
@@ -23,15 +22,44 @@ def ResolveEnvPath(env, folder):
 
 def Normalize(path):
   return os.path.abspath(os.path.normpath(path))
+  
+def SetArchFlags(compiler):
+  if compiler.behavior == 'gcc':
+    if compiler.target.arch == 'x86_64':
+      compiler.cflags += ['-fPIC']
+  elif compiler.like('msvc'):
+    if compiler.target.arch == 'x86_64':
+      compiler.defines += ['WIN64']
 
 class ExtensionConfig(object):
   def __init__(self):
-    self.binaries = []
     self.extensions = []
-    self.generated_headers = None
-    self.mms_root = None
     self.sm_root = None
-    self.core_path = None
+    self.mms_root = None
+    self.all_targets = []
+    self.target_archs = set()
+
+    if builder.options.targets:
+      target_archs = builder.options.targets.split(',')
+    else:
+      target_archs = ['x86']
+      if builder.backend != 'amb2':
+        target_archs.append('x86_64')
+
+    for arch in target_archs:
+        try:
+            cxx = builder.DetectCxx(target_arch = arch)
+            self.target_archs.add(cxx.target.arch)
+        except Exception as e:
+            # Error if archs were manually overridden.
+            if builder.options.targets:
+                raise
+            print('Skipping target {}: {}'.format(arch, e))
+            continue
+        self.all_targets.append(cxx)
+
+    if not self.all_targets:
+        raise Exception('No suitable C/C++ compiler was found.')
 
   @property
   def tag(self):
@@ -58,7 +86,7 @@ class ExtensionConfig(object):
     else:
       self.mms_root = ResolveEnvPath('MMSOURCE110', 'mmsource-1.10')
       if not self.mms_root:
-        self.mms_root = ResolveEnvPath('MMSOURCE', 'metamod-source')
+        self.mms_root = ResolveEnvPath('MMSOURCE_DEV', 'metamod-source')
       if not self.mms_root:
         self.mms_root = ResolveEnvPath('MMSOURCE_DEV', 'mmsource-central')
 
@@ -66,18 +94,27 @@ class ExtensionConfig(object):
       raise Exception('Could not find a source copy of Metamod:Source')
     self.mms_root = Normalize(self.mms_root)
 
-  def detectCore(self):
-    if builder.options.core_path:
-        self.core_path = Normalize(builder.options.core_path)
-    else:
-        raise Exception('Could not find core library')
-
   def configure(self):
-    cxx = builder.DetectCompilers()
+    if not set(self.target_archs).issubset(['x86', 'x86_64']):
+      raise Exception('Unknown target architecture: {0}'.format(self.target_archs))
+
+    for cxx in self.all_targets:
+        self.configure_cxx(cxx)
+
+  def configure_cxx(self, cxx):
+    if cxx.family == 'msvc':
+      if cxx.version < 1900:
+        raise Exception('Only MSVC 2015 and later are supported, c++14 support is required.')
+    if cxx.family == 'gcc':
+      if cxx.version < 'gcc-4.9':
+        raise Exception('Only GCC versions 4.9 or greater are supported, c++14 support is required.')
+    if cxx.family == 'clang':
+      if cxx.version < 'clang-3.4':
+        raise Exception('Only clang versions 3.4 or greater are supported, c++14 support is required.')
 
     if cxx.like('gcc'):
       self.configure_gcc(cxx)
-    elif cxx.vendor == 'msvc':
+    elif cxx.family == 'msvc':
       self.configure_msvc(cxx)
 
     # Optimization
@@ -89,11 +126,9 @@ class ExtensionConfig(object):
       cxx.defines += ['DEBUG', '_DEBUG']
 
     # Platform-specifics
-    if builder.target_platform == 'linux':
+    if cxx.target.platform == 'linux':
       self.configure_linux(cxx)
-    elif builder.target_platform == 'mac':
-      self.configure_mac(cxx)
-    elif builder.target_platform == 'windows':
+    elif cxx.target.platform == 'windows':
       self.configure_windows(cxx)
 
     # Finish up.
@@ -119,30 +154,35 @@ class ExtensionConfig(object):
       '-Wno-switch',
       '-Wno-array-bounds',
       '-msse',
-      '-m32',
       '-fvisibility=hidden',
     ]
+
     cxx.cxxflags += [
       '-std=c++14',
-      '-fno-exceptions',
       '-fno-threadsafe-statics',
       '-Wno-non-virtual-dtor',
       '-Wno-overloaded-virtual',
       '-fvisibility-inlines-hidden',
     ]
-    cxx.linkflags += ['-m32']
 
-    have_gcc = cxx.vendor == 'gcc'
-    have_clang = cxx.vendor == 'clang'
-    if cxx.version >= 'clang-3.6':
+    have_gcc = cxx.family == 'gcc'
+    have_clang = cxx.family == 'clang'
+    if cxx.version >= 'clang-3.9' or cxx.version == 'clang-3.4' or cxx.version > 'apple-clang-6.0':
+      cxx.cxxflags += ['-Wno-expansion-to-defined']
+    if cxx.version == 'clang-3.9' or cxx.version == 'apple-clang-8.0':
+      cxx.cflags += ['-Wno-varargs']
+    if cxx.version >= 'clang-3.4' or cxx.version >= 'apple-clang-7.0':
       cxx.cxxflags += ['-Wno-inconsistent-missing-override']
+    if cxx.version >= 'clang-2.9' or cxx.version >= 'apple-clang-3.0':
+      cxx.cxxflags += ['-Wno-null-dereference']
     if have_clang or (cxx.version >= 'gcc-4.6'):
       cxx.cflags += ['-Wno-narrowing']
     if have_clang or (cxx.version >= 'gcc-4.7'):
       cxx.cxxflags += ['-Wno-delete-non-virtual-dtor']
     if cxx.version >= 'gcc-4.8':
       cxx.cflags += ['-Wno-unused-result']
-
+    if cxx.version >= 'gcc-9.0':
+      cxx.cxxflags += ['-Wno-class-memaccess', '-Wno-packed-not-aligned']
     if have_clang:
       cxx.cxxflags += ['-Wno-implicit-exception-spec-mismatch']
       if cxx.version >= 'apple-clang-5.1' or cxx.version >= 'clang-3.4':
@@ -153,9 +193,13 @@ class ExtensionConfig(object):
 
     if have_gcc:
       cxx.cflags += ['-mfpmath=sse']
+      cxx.cflags += ['-Wno-maybe-uninitialized']
 
     if builder.options.opt == '1':
       cxx.cflags += ['-O3']
+
+    # Don't omit the frame pointer.
+    cxx.cflags += ['-fno-omit-frame-pointer']
 
   def configure_msvc(self, cxx):
     if builder.options.debug == '1':
@@ -178,7 +222,6 @@ class ExtensionConfig(object):
       '/TP',
     ]
     cxx.linkflags += [
-      '/MACHINE:X86',
       'kernel32.lib',
       'user32.lib',
       'gdi32.lib',
@@ -191,12 +234,7 @@ class ExtensionConfig(object):
       'uuid.lib',
       'odbc32.lib',
       'odbccp32.lib',
-      'userenv.lib',
-      'ws2_32.lib',
-      'timerex.lib',
     ]
-
-    cxx.linkflags += ['/LIBPATH:"' + self.core_path + '"']
 
     if builder.options.opt == '1':
       cxx.cflags += ['/Ox', '/Zo']
@@ -210,92 +248,64 @@ class ExtensionConfig(object):
     cxx.cflags += ['/Oy-']
 
   def configure_linux(self, cxx):
-    cxx.defines += ['_LINUX', 'POSIX']
-    cxx.linkflags += ['-Wl,--exclude-libs,ALL', '-lm']
-    if cxx.vendor == 'gcc':
+    cxx.defines += ['_LINUX', 'POSIX', '_FILE_OFFSET_BITS=64']
+    cxx.linkflags += ['-lm']
+    if cxx.family == 'gcc':
       cxx.linkflags += ['-static-libgcc']
-    elif cxx.vendor == 'clang':
+    elif cxx.family == 'clang':
       cxx.linkflags += ['-lgcc_eh']
-
-  def configure_mac(self, cxx):
-    cxx.defines += ['OSX', '_OSX', 'POSIX']
-    cxx.cflags += ['-mmacosx-version-min=10.5']
-    cxx.linkflags += [
-      '-mmacosx-version-min=10.5',
-      '-arch', 'i386',
-      '-lstdc++',
-      '-stdlib=libstdc++',
-    ]
-    cxx.cxxflags += ['-stdlib=libstdc++']
+    cxx.linkflags += ['-static-libstdc++']
 
   def configure_windows(self, cxx):
     cxx.defines += ['WIN32', '_WINDOWS']
-	
+    
+  def LibraryBuilder(self, compiler, name):
+    binary = compiler.Library(name)
+    if binary.compiler.like('msvc'):
+      binary.compiler.linkflags += ['/SUBSYSTEM:WINDOWS']
+    return binary
+
+  def Library(self, context, compiler, name):
+    compiler = compiler.clone()
+    SetArchFlags(compiler)
+    return self.LibraryBuilder(compiler, name)
+
   def ConfigureForExtension(self, context, compiler):
     compiler.cxxincludes += [
-      os.path.join(context.currentSourcePath, 'timerex'),
       os.path.join(self.sm_root, 'public'),
       os.path.join(self.sm_root, 'public', 'extensions'),
       os.path.join(self.sm_root, 'sourcepawn', 'include'),
       os.path.join(self.sm_root, 'public', 'amtl', 'amtl'),
       os.path.join(self.sm_root, 'public', 'amtl'),
     ]
-    if builder.target_platform != 'windows':
-      compiler.postlink += [compiler.Dep(
-        os.path.join(self.core_path, 'libtimerex.a'))]
     return compiler
 
-  def ConfigureForHL2(self, binary):
-    compiler = binary.compiler
-
-    mms_path = os.path.join(self.mms_root, 'core')
-
-    compiler.cxxincludes += [
-      os.path.join(mms_path),
-      os.path.join(mms_path, 'sourcehook'),
-    ]
-
-    compiler.defines += ['META_NO_HL2SDK']
-
-    if compiler.like('msvc'):
-      compiler.defines += ['COMPILER_MSVC', 'COMPILER_MSVC32']
-    else:
-      compiler.defines += ['COMPILER_GCC']
-
-    if builder.target_platform == 'linux':
-      compiler.linkflags += ['-lstdc++']
-    elif builder.target_platform == 'mac':
-      compiler.linkflags.append('-liconv')
-
+  def ExtLibrary(self, context, compiler, name):
+    binary = self.Library(context, compiler, name)
+    SetArchFlags(compiler)
+    self.ConfigureForExtension(context, binary.compiler)
     return binary
 
-  def HL2Library(self, context, name):
-    binary = context.compiler.Library(name)
-    self.ConfigureForExtension(context, binary.compiler)
-    return self.ConfigureForHL2(binary)
-
-  def HL2Project(self, context, name):
-    project = context.compiler.LibraryProject(name)
-    self.ConfigureForExtension(context, project.compiler)
-    return project
-
-  def HL2Config(self, project, name):
-    binary = project.Configure(name, '{0}'.format(self.tag))
-    return self.ConfigureForHL2(binary)
+if getattr(builder, 'target', None) is not None:
+    sys.stderr.write("Your output folder was configured for AMBuild 2.1, and SourceMod is now\n")
+    sys.stderr.write("configured to use AMBuild 2.2. Please remove your output folder and\n")
+    sys.stderr.write("reconfigure to continue.\n")
+    os._exit(1)
 
 Extension = ExtensionConfig()
 Extension.detectSDKs()
-Extension.detectCore()
 Extension.configure()
 
-# Add additional buildscripts here
+# This will clone the list and each cxx object as we recurse, preventing child
+# scripts from messing up global state.
+builder.targets = builder.CloneableList(Extension.all_targets)
+
 BuildScripts = [
   'AMBuilder',
 ]
-
 if builder.backend == 'amb2':
   BuildScripts += [
     'PackageScript',
   ]
 
-builder.RunBuildScripts(BuildScripts, { 'Extension': Extension})
+builder.Build(BuildScripts, { 'Extension': Extension })
