@@ -1,6 +1,11 @@
 name: CI
 
-on: push
+on:
+  push:
+    branches:
+      - "master"
+    tags:
+      - 'v*.*.*'
 
 jobs:
   build:
@@ -12,7 +17,7 @@ jobs:
             os_short: win
             compiler_cc: msvc
             rust-target: i686-pc-windows-msvc
-            packaging: Compress-Archive -Path .\package\* -DestinationPath timerex-win.zip
+            packaging: Compress-Archive -Path ./package/* -DestinationPath timerex-win.zip
           - os: ubuntu-18.04
             os_short: linux
             compiler_cc: clang-3.9
@@ -99,6 +104,6 @@ jobs:
         uses: softprops/action-gh-release@v1
         if: startsWith(github.ref, 'refs/tags/')
         with:
-          files: build/timerex-${{ matrix.os_short }}.zip
+          files: timerex/build/timerex-${{ matrix.os_short }}.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
