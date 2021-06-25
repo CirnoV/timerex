@@ -2,6 +2,7 @@
 #![allow(non_camel_case_types)]
 #![allow(non_snake_case)]
 #![feature(drain_filter)]
+#![feature(shrink_to)]
 
 use std::collections::BTreeMap;
 use std::ffi;
@@ -20,6 +21,7 @@ bitflags! {
     }
 }
 
+const TIMERS_MIN_CAPACITY: usize = 1024;
 static TIMER_MAP: Lazy<Arc<RwLock<BTreeMap<i32, TimerChannel>>>> = Lazy::new(|| Default::default());
 
 pub struct TimerChannel {
@@ -31,7 +33,7 @@ impl Default for TimerChannel {
     fn default() -> Self {
         Self {
             stopped: None,
-            timers: Vec::with_capacity(256),
+            timers: Vec::with_capacity(TIMERS_MIN_CAPACITY),
         }
     }
 }
@@ -76,6 +78,8 @@ impl TimerChannel {
             .drain_filter(|timer| timer.flags.contains(TimerFlags::TIMER_FLAG_NO_MAPCHANGE))
             .collect::<Vec<_>>();
 
+        self.timers.shrink_to(TIMERS_MIN_CAPACITY);
+
         drop_timers
     }
     fn handle_pluginload(&mut self, identity: *mut ffi::c_void) -> Vec<TimerDetail> {
@@ -83,6 +87,8 @@ impl TimerChannel {
             .timers
             .drain_filter(|timer| timer.identity == identity)
             .collect::<Vec<_>>();
+
+        self.timers.shrink_to(TIMERS_MIN_CAPACITY);
 
         drop_timers
     }
