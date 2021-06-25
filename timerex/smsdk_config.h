@@ -44,7 +44,7 @@
 #define SMEXT_CONF_AUTHOR "CirnoV <cirnov59@gmail.com>"
 #define SMEXT_CONF_URL "https://github.com/cirnov/timerex"
 #define SMEXT_CONF_LOGTAG "TIMEREX"
-#define SMEXT_CONF_LICENSE "GPL"
+#define SMEXT_CONF_LICENSE "GPLv3"
 #define SMEXT_CONF_DATESTRING __DATE__
 
 /**

@@ -1,43 +1,7 @@
-/**
- * vim: set ts=4 :
- * =============================================================================
- * SourceMod Sample Extension
- * Copyright (C) 2004-2008 AlliedModders LLC.  All rights reserved.
- * =============================================================================
- *
- * This program is free software; you can redistribute it and/or modify it under
- * the terms of the GNU General Public License, version 3.0, as published by the
- * Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful, but WITHOUT
- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
- * FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more
- * details.
- *
- * You should have received a copy of the GNU General Public License along with
- * this program.  If not, see <http://www.gnu.org/licenses/>.
- *
- * As a special exception, AlliedModders LLC gives you permission to link the
- * code of this program (as well as its derivative works) to "Half-Life 2," the
- * "Source Engine," the "SourcePawn JIT," and any Game MODs that run on software
- * by the Valve Corporation.  You must obey the GNU General Public License in
- * all respects for all other code used.  Additionally, AlliedModders LLC grants
- * this exception to all derivative works.  AlliedModders LLC defines further
- * exceptions, found in LICENSE.txt (as of this writing, version JULY-31-2007),
- * or <http://www.sourcemod.net/license.php>.
- *
- * Version: $Id$
- */
-
 #include "extension.h"
 #include "bindings.h"
 
-/**
-  * @file extension.cpp
-  * @brief Implement extension code here.
-  */
-
-Extension extension; /**< Global singleton for extension's main interface */
+TimerExtension extension;
 
 SMEXT_LINK(&extension);
 
@@ -159,7 +123,7 @@ const sp_nativeinfo_t MyNatives[] = {
     {NULL, NULL},
 };
 
-void Extension::OnCoreMapEnd()
+void TimerExtension::OnCoreMapEnd()
 {
     timer_arr arr = timer_mapchange();
     kill_timer_arr(&arr);
@@ -201,14 +165,14 @@ void RunTimer(bool simulating)
     drop_timer_arr(&timers);
 }
 
-bool Extension::SDK_OnLoad(char *error, size_t maxlen, bool late)
+bool TimerExtension::SDK_OnLoad(char *error, size_t maxlen, bool late)
 {
     g_pCoreToken = sharesys->CreateIdentity(sharesys->FindIdentType("CORE"), this);
 
     return true;
 }
 
-void Extension::SDK_OnUnload()
+void TimerExtension::SDK_OnUnload()
 {
     smutils->RemoveGameFrameHook(RunTimer);
 
@@ -217,7 +181,7 @@ void Extension::SDK_OnUnload()
     drop_timer_arr(&timers);
 }
 
-void Extension::SDK_OnAllLoaded()
+void TimerExtension::SDK_OnAllLoaded()
 {
     plsys->AddPluginsListener(this);
     smutils->AddGameFrameHook(RunTimer);
@@ -231,17 +195,17 @@ void ResetTimer(SourceMod::IdentityToken_t *identity)
     drop_timer_arr(&timers);
 }
 
-void Extension::OnPluginLoaded(IPlugin *plugin)
+void TimerExtension::OnPluginLoaded(IPlugin *plugin)
 {
     ResetTimer(plugin->GetBaseContext()->GetIdentity());
 }
 
-void Extension::OnPluginUnloaded(IPlugin *plugin)
+void TimerExtension::OnPluginUnloaded(IPlugin *plugin)
 {
     ResetTimer(plugin->GetBaseContext()->GetIdentity());
 }
 
-void Extension::OnPluginWillUnload(IPlugin *plugin)
+void TimerExtension::OnPluginWillUnload(IPlugin *plugin)
 {
     ResetTimer(plugin->GetBaseContext()->GetIdentity());
 }
