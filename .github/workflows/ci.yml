@@ -1,11 +1,9 @@
 name: CI
 
-on:
-  push:
-    branches: [ main ]
+on: push
 
 jobs:
-  test:
+  build:
     strategy:
       matrix:
         os: [ubuntu-18.04, windows-latest]
@@ -14,11 +12,13 @@ jobs:
             os_short: win
             compiler_cc: msvc
             rust-target: i686-pc-windows-msvc
+            packaging: Compress-Archive -Path .\package\* -DestinationPath timerex-win.zip
           - os: ubuntu-18.04
             os_short: linux
             compiler_cc: clang-3.9
             compiler_cxx: clang++-3.9
             rust-target: i686-unknown-linux-gnu
+            packaging: cd package && zip -r ../timerex-linux.zip addons
     runs-on: ${{ matrix.os }}
     name: ${{ matrix.os_short }}-${{ matrix.compiler_cc }}
     steps:
@@ -115,3 +115,12 @@ jobs:
           mkdir -p build && cd build
           python ../configure.py --enable-optimize --sm-path=${{ github.workspace }}/sourcemod/ --mms-path=${{ github.workspace }}/mmsource/
           ambuild
+          ${{ matrix.packaging }}
+      
+      - name: Release
+        uses: softprops/action-gh-release@v1
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: build/timerex-${{ secrets.os_short }}.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
