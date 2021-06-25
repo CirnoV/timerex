@@ -6,210 +6,16 @@
 
 use std::collections::BTreeMap;
 use std::ffi;
-use std::sync::{Arc, RwLock};
-use std::time::{Duration, Instant};
+use std::sync::Arc;
+use std::sync::RwLock;
 
-use bitflags::bitflags;
 use once_cell::sync::Lazy;
 
-bitflags! {
-    #[derive(Default)]
-    struct TimerFlags: i32 {
-        const TIMER_REPEAT              = 1 << 0;
-        const TIMER_FLAG_NO_MAPCHANGE   = 1 << 1;
-        const TIMER_DATA_HNDL_CLOSE     = 1 << 9;
-    }
-}
+pub(crate) mod timer;
 
-const TIMERS_MIN_CAPACITY: usize = 1024;
+use timer::{TimerChannel, TimerDetail, TimerInfo};
+
 static TIMER_MAP: Lazy<Arc<RwLock<BTreeMap<i32, TimerChannel>>>> = Lazy::new(|| Default::default());
-
-pub struct TimerChannel {
-    stopped: Option<Instant>,
-    timers: Vec<TimerDetail>,
-}
-
-impl Default for TimerChannel {
-    fn default() -> Self {
-        Self {
-            stopped: None,
-            timers: Vec::with_capacity(TIMERS_MIN_CAPACITY),
-        }
-    }
-}
-
-impl TimerChannel {
-    fn append(&mut self, timer: TimerDetail) {
-        self.timers.push(timer);
-    }
-    fn update(&mut self) -> Option<Vec<TimerDetail>> {
-        if let Some(_) = self.stopped {
-            return None;
-        }
-
-        let elapsed_timers: Vec<TimerDetail> =
-            self.timers.drain_filter(|timer| timer.elapsed()).collect();
-        if elapsed_timers.is_empty() {
-            None
-        } else {
-            Some(elapsed_timers)
-        }
-    }
-    fn pause(&mut self) {
-        if let Some(_) = self.stopped {
-            self.resume();
-        }
-        self.stopped = Some(Instant::now());
-    }
-    fn resume(&mut self) {
-        if let Some(instant) = self.stopped {
-            for timer in self.timers.iter_mut() {
-                timer.interval += instant.elapsed();
-            }
-            self.stopped = None;
-        }
-    }
-    fn clear(&mut self) -> Vec<TimerDetail> {
-        self.timers.drain(..).collect()
-    }
-    fn handle_mapchange(&mut self) -> Vec<TimerDetail> {
-        let drop_timers = self
-            .timers
-            .drain_filter(|timer| timer.flags.contains(TimerFlags::TIMER_FLAG_NO_MAPCHANGE))
-            .collect::<Vec<_>>();
-
-        self.timers.shrink_to(TIMERS_MIN_CAPACITY);
-
-        drop_timers
-    }
-    fn handle_pluginload(&mut self, identity: *mut ffi::c_void) -> Vec<TimerDetail> {
-        let drop_timers = self
-            .timers
-            .drain_filter(|timer| timer.identity == identity)
-            .collect::<Vec<_>>();
-
-        self.timers.shrink_to(TIMERS_MIN_CAPACITY);
-
-        drop_timers
-    }
-}
-
-#[derive(Clone, Copy)]
-#[repr(C)]
-pub struct TimerDetail {
-    hook: *mut ffi::c_void,
-    context: *mut ffi::c_void,
-    identity: *mut ffi::c_void,
-    time: Instant,
-    interval: Duration,
-    _interval: Duration,
-    user_data: i32,
-    flags: TimerFlags,
-    channel: i32,
-}
-
-impl TimerDetail {
-    fn elapsed(&self) -> bool {
-        self.time.elapsed() >= self.interval
-    }
-}
-
-impl Ord for TimerDetail {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        (self.time.elapsed() + self.interval).cmp(&(other.time.elapsed() + other.interval))
-    }
-}
-
-impl PartialOrd for TimerDetail {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl PartialEq for TimerDetail {
-    fn eq(&self, other: &Self) -> bool {
-        self.time.elapsed() + self.interval == other.time.elapsed() + other.interval
-    }
-}
-
-impl Eq for TimerDetail {}
-
-unsafe impl Send for TimerDetail {}
-unsafe impl Sync for TimerDetail {}
-
-#[no_mangle]
-pub extern "C" fn create_timer(
-    hook: *mut ffi::c_void,
-    context: *mut ffi::c_void,
-    identity: *mut ffi::c_void,
-    interval: u32,
-    user_data: i32,
-    flags: i32,
-    channel: i32,
-) {
-    let t = TimerDetail {
-        hook,
-        context,
-        identity,
-        time: Instant::now(),
-        interval: Duration::from_millis(interval.into()),
-        _interval: Duration::from_millis(interval.into()),
-        user_data,
-        flags: unsafe { TimerFlags::from_bits_unchecked(flags) },
-        channel,
-    };
-
-    {
-        let mut timer_map = TIMER_MAP.write().unwrap();
-        let timer_list = match timer_map.get_mut(&channel) {
-            Some(v) => v,
-            None => {
-                timer_map.insert(channel, TimerChannel::default());
-                timer_map.get_mut(&channel).unwrap()
-            }
-        };
-        timer_list.append(t);
-    }
-}
-
-#[repr(C)]
-pub struct TimerInfo {
-    hook: *mut ffi::c_void,
-    context: *mut ffi::c_void,
-    identity: *mut ffi::c_void,
-    interval: u32,
-    user_data: i32,
-    flags: i32,
-    channel: i32,
-}
-
-impl TimerDetail {
-    fn to_info(self) -> TimerInfo {
-        TimerInfo {
-            hook: self.hook,
-            context: self.context,
-            identity: self.identity,
-            interval: self._interval.as_millis() as u32,
-            user_data: self.user_data,
-            flags: self.flags.bits(),
-            channel: self.channel,
-        }
-    }
-}
-
-impl From<&TimerDetail> for TimerInfo {
-    fn from(detail: &TimerDetail) -> Self {
-        Self {
-            hook: detail.hook,
-            context: detail.context,
-            identity: detail.identity,
-            interval: detail._interval.as_millis() as u32,
-            user_data: detail.user_data,
-            flags: detail.flags.bits(),
-            channel: detail.channel,
-        }
-    }
-}
 
 #[repr(C)]
 pub struct timer_arr {
@@ -229,6 +35,31 @@ impl timer_arr {
 }
 
 #[no_mangle]
+pub extern "C" fn create_timer(
+    hook: *mut ffi::c_void,
+    context: *mut ffi::c_void,
+    identity: *mut ffi::c_void,
+    interval: u32,
+    user_data: i32,
+    flags: i32,
+    channel: i32,
+) {
+    let t = TimerDetail::new(hook, context, identity, interval, user_data, flags, channel);
+
+    {
+        let mut timer_map = TIMER_MAP.write().unwrap();
+        let timer_list = match timer_map.get_mut(&channel) {
+            Some(v) => v,
+            None => {
+                timer_map.insert(channel, TimerChannel::default());
+                timer_map.get_mut(&channel).unwrap()
+            }
+        };
+        timer_list.append(t);
+    }
+}
+
+#[no_mangle]
 pub extern "C" fn drop_timer_arr(arr: *mut timer_arr) {
     unsafe {
         let arr = arr.as_ref().unwrap();
@@ -236,7 +67,6 @@ pub extern "C" fn drop_timer_arr(arr: *mut timer_arr) {
     };
 }
 
-// #[allow(improper_ctypes_definitions)]
 #[no_mangle]
 pub extern "C" fn update_timer() -> timer_arr {
     let mut timer_map = TIMER_MAP.write().unwrap();
