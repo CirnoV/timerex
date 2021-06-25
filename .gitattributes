@@ -1,0 +1,6 @@
+*.inc linguist-language=sourcepawn
+
+configure.py linguist-vendored
+AMBuild linguist-vendored
+AMBuildScript linguist-vendored
+PackageScript linguist-vendored
