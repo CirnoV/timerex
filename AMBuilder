@@ -2,7 +2,7 @@
 import os
 
 for cxx in builder.targets:
-  binary = Extension.ExtLibrary(builder, cxx, 'tiemrex.ext')
+  binary = Extension.ExtLibrary(builder, cxx, 'timerex.ext')
   arch = {'x86': 'i686', 'x86_64': 'x86_64'}[binary.compiler.target.arch]
   if builder.options.opt == '1':
     directory = 'release'
