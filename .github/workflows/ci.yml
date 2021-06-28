@@ -41,6 +41,8 @@ jobs:
           default: true
 
       - uses: Swatinem/rust-cache@v1
+        with:
+          working-directory: timerex
 
       - uses: actions/checkout@v2
         name: Checkout sourcemod
