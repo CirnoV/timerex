@@ -1,2 +1,3 @@
 [toolchain]
 targets = [ "i686-unknown-linux-gnu", "i686-pc-windows-msvc" ]
+channel = "nightly"

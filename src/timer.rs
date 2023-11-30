@@ -38,7 +38,7 @@ impl TimerChannel {
         }
 
         let elapsed_timers: Vec<TimerDetail> =
-            self.timers.drain_filter(|timer| timer.elapsed()).collect();
+            self.timers.extract_if(|timer| timer.elapsed()).collect();
         if elapsed_timers.is_empty() {
             None
         } else {
@@ -65,7 +65,7 @@ impl TimerChannel {
     pub fn handle_mapchange(&mut self) -> Vec<TimerDetail> {
         let drop_timers = self
             .timers
-            .drain_filter(|timer| timer.flags.contains(TimerFlags::TIMER_FLAG_NO_MAPCHANGE))
+            .extract_if(|timer| timer.flags.contains(TimerFlags::TIMER_FLAG_NO_MAPCHANGE))
             .collect::<Vec<_>>();
 
         self.timers.shrink_to(TIMERS_MIN_CAPACITY);
@@ -75,7 +75,7 @@ impl TimerChannel {
     pub fn handle_pluginload(&mut self, identity: *mut ffi::c_void) -> Vec<TimerDetail> {
         let drop_timers = self
             .timers
-            .drain_filter(|timer| timer.identity == identity)
+            .extract_if(|timer| timer.identity == identity)
             .collect::<Vec<_>>();
 
         self.timers.shrink_to(TIMERS_MIN_CAPACITY);
