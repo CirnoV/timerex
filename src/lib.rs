@@ -1,7 +1,6 @@
 #![allow(non_upper_case_globals)]
 #![allow(non_camel_case_types)]
 #![allow(non_snake_case)]
-#![feature(extract_if)]
 
 use std::collections::BTreeMap;
 use std::ffi;
@@ -33,7 +32,7 @@ impl timer_arr {
     }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn create_timer(
     hook: *mut ffi::c_void,
     context: *mut ffi::c_void,
@@ -58,7 +57,7 @@ pub extern "C" fn create_timer(
     }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn drop_timer_arr(arr: *mut timer_arr) {
     unsafe {
         let arr = arr.as_ref().unwrap();
@@ -66,7 +65,7 @@ pub extern "C" fn drop_timer_arr(arr: *mut timer_arr) {
     };
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn update_timer() -> timer_arr {
     let mut timer_map = TIMER_MAP.write().unwrap();
     let mut timers = timer_map
@@ -81,40 +80,40 @@ pub extern "C" fn update_timer() -> timer_arr {
     output
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn pause_timer(channels: *mut i32, len: libc::size_t) {
     let channels = unsafe { std::slice::from_raw_parts(channels, len) };
     channels.iter().for_each(|&c| pause_channel(c))
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn pause_channel(channel: i32) {
     if let Some(channel) = TIMER_MAP.write().unwrap().get_mut(&channel) {
         channel.pause()
     }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn resume_timer(channels: *mut i32, len: libc::size_t) {
     let channels = unsafe { std::slice::from_raw_parts(channels, len) };
     channels.iter().for_each(|&c| resume_channel(c))
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn resume_timer_all() {
     for (_key, channel) in TIMER_MAP.write().unwrap().iter_mut() {
         channel.resume();
     }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn resume_channel(channel: i32) {
     if let Some(channel) = TIMER_MAP.write().unwrap().get_mut(&channel) {
         channel.resume()
     }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn remove_channel(channel: i32) -> timer_arr {
     let mut timers = {
         let mut timer_map = TIMER_MAP.write().unwrap();
@@ -133,7 +132,7 @@ pub extern "C" fn remove_channel(channel: i32) -> timer_arr {
     output
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn clear_timer() -> timer_arr {
     let mut timers = {
         let mut timer_map = TIMER_MAP.write().unwrap();
@@ -151,7 +150,7 @@ pub extern "C" fn clear_timer() -> timer_arr {
     output
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn timer_mapchange() -> timer_arr {
     let mut timers = {
         let mut timer_map = TIMER_MAP.write().unwrap();
@@ -168,7 +167,7 @@ pub extern "C" fn timer_mapchange() -> timer_arr {
     output
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn timer_pluginload(identity: *mut ffi::c_void) -> timer_arr {
     let mut timers = {
         let mut timer_map = TIMER_MAP.write().unwrap();

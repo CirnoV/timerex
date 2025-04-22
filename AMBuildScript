@@ -1,6 +1,7 @@
 # vim: set sts=2 ts=8 sw=2 tw=99 et ft=python:
 import os, sys
-import traceback
+
+# Simple extensions do not need to modify this file.
 
 def ResolveEnvPath(env, folder):
   if env in os.environ:
@@ -22,7 +23,7 @@ def ResolveEnvPath(env, folder):
 
 def Normalize(path):
   return os.path.abspath(os.path.normpath(path))
-  
+
 def SetArchFlags(compiler):
   if compiler.behavior == 'gcc':
     if compiler.target.arch == 'x86_64':
@@ -33,18 +34,18 @@ def SetArchFlags(compiler):
 
 class ExtensionConfig(object):
   def __init__(self):
+    self.binaries = []
     self.extensions = []
-    self.sm_root = None
+    self.generated_headers = None
     self.mms_root = None
+    self.sm_root = None
     self.all_targets = []
     self.target_archs = set()
 
     if builder.options.targets:
       target_archs = builder.options.targets.split(',')
     else:
-      target_archs = ['x86']
-      if builder.backend != 'amb2':
-        target_archs.append('x86_64')
+      target_archs = ['x86', 'x86_64']
 
     for arch in target_archs:
         try:
@@ -68,23 +69,12 @@ class ExtensionConfig(object):
     return 'Release'
 
   def detectSDKs(self):
-    if builder.options.sm_path:
-      self.sm_root = builder.options.sm_path
-    else:
-      self.sm_root = ResolveEnvPath('SOURCEMOD18', 'sourcemod-1.8')
-      if not self.sm_root:
-        self.sm_root = ResolveEnvPath('SOURCEMOD', 'sourcemod')
-      if not self.sm_root:
-        self.sm_root = ResolveEnvPath('SOURCEMOD_DEV', 'sourcemod-central')
-
-    if not self.sm_root or not os.path.isdir(self.sm_root):
-      raise Exception('Could not find a source copy of SourceMod')
-    self.sm_root = Normalize(self.sm_root)
-
     if builder.options.mms_path:
       self.mms_root = builder.options.mms_path
     else:
-      self.mms_root = ResolveEnvPath('MMSOURCE110', 'mmsource-1.10')
+      self.mms_root = ResolveEnvPath('MMSOURCE112', 'mmsource-1.12')
+      if not self.mms_root:
+        self.mms_root = ResolveEnvPath('MMSOURCE', 'metamod-source')
       if not self.mms_root:
         self.mms_root = ResolveEnvPath('MMSOURCE_DEV', 'metamod-source')
       if not self.mms_root:
@@ -94,8 +84,26 @@ class ExtensionConfig(object):
       raise Exception('Could not find a source copy of Metamod:Source')
     self.mms_root = Normalize(self.mms_root)
 
+    if builder.options.sm_path:
+      self.sm_root = builder.options.sm_path
+    else:
+      self.sm_root = ResolveEnvPath('SOURCEMOD112', 'sourcemod-1.12')
+      if not self.sm_root:
+        self.sm_root = ResolveEnvPath('SOURCEMOD', 'sourcemod')
+      if not self.sm_root:
+        self.sm_root = ResolveEnvPath('SOURCEMOD_DEV', 'sourcemod')
+      if not self.sm_root:
+        self.sm_root = ResolveEnvPath('SOURCEMOD_DEV', 'sourcemod-central')
+
+    if not self.sm_root or not os.path.isdir(self.sm_root):
+      raise Exception('Could not find a source copy of SourceMod')
+    self.sm_root = Normalize(self.sm_root)
+
   def configure(self):
-    if not set(self.target_archs).issubset(['x86', 'x86_64']):
+    
+    allowed_archs = ['x86','x86_64']
+
+    if not set(self.target_archs).issubset(allowed_archs):
       raise Exception('Unknown target architecture: {0}'.format(self.target_archs))
 
     for cxx in self.all_targets:
@@ -103,14 +111,14 @@ class ExtensionConfig(object):
 
   def configure_cxx(self, cxx):
     if cxx.family == 'msvc':
-      if cxx.version < 1900:
-        raise Exception('Only MSVC 2015 and later are supported, c++14 support is required.')
-    if cxx.family == 'gcc':
-      if cxx.version < 'gcc-4.9':
-        raise Exception('Only GCC versions 4.9 or greater are supported, c++14 support is required.')
-    if cxx.family == 'clang':
-      if cxx.version < 'clang-3.4':
-        raise Exception('Only clang versions 3.4 or greater are supported, c++14 support is required.')
+      if cxx.version < 1914 and builder.options.generator != 'vs':
+        raise Exception(f'Only MSVC 2017 15.7 and later are supported, full C++17 support is required. ({str(cxx.version)} < 1914)')
+    elif cxx.family == 'gcc':
+      if cxx.version < 'gcc-8':
+        raise Exception('Only GCC versions 8 or later are supported, full C++17 support is required.')
+    elif cxx.family == 'clang':
+      if cxx.version < 'clang-5':
+        raise Exception('Only clang versions 5 or later are supported, full C++17 support is required.')
 
     if cxx.like('gcc'):
       self.configure_gcc(cxx)
@@ -128,13 +136,10 @@ class ExtensionConfig(object):
     # Platform-specifics
     if cxx.target.platform == 'linux':
       self.configure_linux(cxx)
+    elif cxx.target.platform == 'mac':
+      self.configure_mac(cxx)
     elif cxx.target.platform == 'windows':
       self.configure_windows(cxx)
-
-    # Finish up.
-    cxx.includes += [
-      os.path.join(self.sm_root, 'public'),
-    ]
 
   def configure_gcc(self, cxx):
     cxx.defines += [
@@ -153,55 +158,47 @@ class ExtensionConfig(object):
       '-Wno-unused',
       '-Wno-switch',
       '-Wno-array-bounds',
-      '-msse',
       '-fvisibility=hidden',
     ]
+  
+    if cxx.target.arch in ['x86', 'x86_64']:
+      cxx.cflags += ['-msse']
 
     cxx.cxxflags += [
-      '-std=c++14',
       '-fno-threadsafe-statics',
       '-Wno-non-virtual-dtor',
       '-Wno-overloaded-virtual',
+      '-Wno-register',
       '-fvisibility-inlines-hidden',
+      '-std=c++17',
     ]
 
     have_gcc = cxx.family == 'gcc'
     have_clang = cxx.family == 'clang'
-    if cxx.version >= 'clang-3.9' or cxx.version == 'clang-3.4' or cxx.version > 'apple-clang-6.0':
-      cxx.cxxflags += ['-Wno-expansion-to-defined']
-    if cxx.version == 'clang-3.9' or cxx.version == 'apple-clang-8.0':
-      cxx.cflags += ['-Wno-varargs']
-    if cxx.version >= 'clang-3.4' or cxx.version >= 'apple-clang-7.0':
-      cxx.cxxflags += ['-Wno-inconsistent-missing-override']
-    if cxx.version >= 'clang-2.9' or cxx.version >= 'apple-clang-3.0':
-      cxx.cxxflags += ['-Wno-null-dereference']
-    if have_clang or (cxx.version >= 'gcc-4.6'):
-      cxx.cflags += ['-Wno-narrowing']
-    if have_clang or (cxx.version >= 'gcc-4.7'):
-      cxx.cxxflags += ['-Wno-delete-non-virtual-dtor']
-    if cxx.version >= 'gcc-4.8':
-      cxx.cflags += ['-Wno-unused-result']
-    if cxx.version >= 'gcc-9.0':
-      cxx.cxxflags += ['-Wno-class-memaccess', '-Wno-packed-not-aligned']
+
+    # Work around errors from smsdk_ext.cpp
     if have_clang:
       cxx.cxxflags += ['-Wno-implicit-exception-spec-mismatch']
-      if cxx.version >= 'apple-clang-5.1' or cxx.version >= 'clang-3.4':
-        cxx.cxxflags += ['-Wno-deprecated-register']
-      else:
-        cxx.cxxflags += ['-Wno-deprecated']
-      cxx.cflags += ['-Wno-sometimes-uninitialized']
+
+    # Work around SDK warnings.
+    if cxx.version >= 'clang-10.0' or cxx.version >= 'apple-clang-12.0':
+        cxx.cflags += [
+            '-Wno-implicit-int-float-conversion',
+            '-Wno-tautological-overlap-compare',
+        ]
 
     if have_gcc:
       cxx.cflags += ['-mfpmath=sse']
       cxx.cflags += ['-Wno-maybe-uninitialized']
 
     if builder.options.opt == '1':
-      cxx.cflags += ['-O3']
+        cxx.cflags += ['-O3']
 
     # Don't omit the frame pointer.
     cxx.cflags += ['-fno-omit-frame-pointer']
 
   def configure_msvc(self, cxx):
+
     if builder.options.debug == '1':
       cxx.cflags += ['/MTd']
       cxx.linkflags += ['/NODEFAULTLIB:libcmt']
@@ -220,6 +217,7 @@ class ExtensionConfig(object):
       '/EHsc',
       '/GR-',
       '/TP',
+      '/std:c++17',
     ]
     cxx.linkflags += [
       'kernel32.lib',
@@ -248,7 +246,7 @@ class ExtensionConfig(object):
     cxx.cflags += ['/Oy-']
 
   def configure_linux(self, cxx):
-    cxx.defines += ['_LINUX', 'POSIX', '_FILE_OFFSET_BITS=64']
+    cxx.defines += ['LINUX', '_LINUX', 'POSIX', '_FILE_OFFSET_BITS=64']
     cxx.linkflags += ['-lm']
     if cxx.family == 'gcc':
       cxx.linkflags += ['-static-libgcc']
@@ -256,22 +254,23 @@ class ExtensionConfig(object):
       cxx.linkflags += ['-lgcc_eh']
     cxx.linkflags += ['-static-libstdc++']
 
+  def configure_mac(self, cxx):
+    cxx.defines += ['OSX', '_OSX', 'POSIX', 'KE_ABSOLUTELY_NO_STL']
+    cxx.cflags += ['-mmacosx-version-min=10.15']
+    cxx.linkflags += [
+      '-mmacosx-version-min=10.15',
+      '-stdlib=libc++',
+      '-lc++',
+    ]
+    cxx.cxxflags += ['-stdlib=libc++']
+
   def configure_windows(self, cxx):
     cxx.defines += ['WIN32', '_WINDOWS']
-    
-  def LibraryBuilder(self, compiler, name):
-    binary = compiler.Library(name)
-    if binary.compiler.like('msvc'):
-      binary.compiler.linkflags += ['/SUBSYSTEM:WINDOWS']
-    return binary
-
-  def Library(self, context, compiler, name):
-    compiler = compiler.clone()
-    SetArchFlags(compiler)
-    return self.LibraryBuilder(compiler, name)
-
+	
   def ConfigureForExtension(self, context, compiler):
     compiler.cxxincludes += [
+      os.path.join(context.currentSourcePath),
+      os.path.join(context.currentSourcePath, 'sdk'),
       os.path.join(self.sm_root, 'public'),
       os.path.join(self.sm_root, 'public', 'extensions'),
       os.path.join(self.sm_root, 'sourcepawn', 'include'),
@@ -280,17 +279,31 @@ class ExtensionConfig(object):
     ]
     return compiler
 
-  def ExtLibrary(self, context, compiler, name):
-    binary = self.Library(context, compiler, name)
+  def ConfigureForHL2(self, binary):
+    compiler = binary.compiler
     SetArchFlags(compiler)
-    self.ConfigureForExtension(context, binary.compiler)
+
+    compiler.cxxincludes += [
+      os.path.join(self.mms_root, 'core'),
+      os.path.join(self.mms_root, 'core', 'sourcehook'),
+    ]
+
+    compiler.defines += ['META_NO_HL2SDK']
     return binary
 
-if getattr(builder, 'target', None) is not None:
-    sys.stderr.write("Your output folder was configured for AMBuild 2.1, and SourceMod is now\n")
-    sys.stderr.write("configured to use AMBuild 2.2. Please remove your output folder and\n")
-    sys.stderr.write("reconfigure to continue.\n")
-    os._exit(1)
+  def HL2Library(self, context, name):
+    binary = context.compiler.Library(name)
+    self.ConfigureForExtension(context, binary.compiler)
+    return self.ConfigureForHL2(binary)
+
+  def HL2Project(self, context, name):
+    project = builder.LibraryProject(name)
+    return project
+
+  def HL2Config(self, context, project, name, compiler):
+    binary = project.Configure(compiler, name, '{0} - {1}'.format(self.tag, compiler.target.arch))
+    self.ConfigureForExtension(context, binary.compiler)
+    return self.ConfigureForHL2(binary)
 
 Extension = ExtensionConfig()
 Extension.detectSDKs()
@@ -300,12 +313,10 @@ Extension.configure()
 # scripts from messing up global state.
 builder.targets = builder.CloneableList(Extension.all_targets)
 
+# Add additional buildscripts here
 BuildScripts = [
   'AMBuilder',
+  'PackageScript',
 ]
-if builder.backend == 'amb2':
-  BuildScripts += [
-    'PackageScript',
-  ]
 
 builder.Build(BuildScripts, { 'Extension': Extension })

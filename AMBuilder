@@ -1,8 +1,27 @@
 # vim: set sts=2 ts=8 sw=2 tw=99 et ft=python:
 import os
 
+# Name of your extesion, this will also be it's file name.
+projectName = 'timerex'
+
+# smsdk_ext.cpp will be automatically added later
+sourceFiles = [
+  'timerex/extension.cpp',
+]
+
+project = Extension.HL2Project(builder, projectName + '.ext')
+
+if os.path.isfile(os.path.join(builder.currentSourcePath, 'sdk', 'smsdk_ext.cpp')):
+  # Use the copy included in the project
+  project.sources += [os.path.join('sdk', 'smsdk_ext.cpp')]
+else:
+  # Use the copy included with SM 1.6 and newer
+  project.sources += [os.path.join(Extension.sm_root, 'public', 'smsdk_ext.cpp')]
+  
+project.sources += sourceFiles
+
 for cxx in builder.targets:
-  binary = Extension.ExtLibrary(builder, cxx, 'timerex.ext')
+  binary = Extension.HL2Config(builder, project, projectName + '.ext', cxx)
   arch = {'x86': 'i686', 'x86_64': 'x86_64'}[binary.compiler.target.arch]
   if builder.options.opt == '1':
     directory = 'release'
@@ -24,11 +43,7 @@ for cxx in builder.targets:
     binary.compiler.linkflags += [
       'userenv.lib',
       'ws2_32.lib',
+      "ntdll.lib",
     ]
 
-  binary.sources += [
-    'timerex/extension.cpp',
-    os.path.join(Extension.sm_root, 'public', 'smsdk_ext.cpp'),
-  ]
-
-  Extension.extensions = [builder.Add(binary)]
+Extension.extensions = builder.Add(project)
