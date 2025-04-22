@@ -12,22 +12,36 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest]
+        arch: [x86, x86_64]
         include:
           - os: windows-latest
+            arch: x86
             os_short: win
             compiler_cc: msvc
             rust-target: i686-pc-windows-msvc
-            target: x86
-            packaging: Compress-Archive -Path ./package/* -DestinationPath timerex-win.zip
+            packaging: Compress-Archive -Path ./package/* -DestinationPath timerex-win-x86.zip
+          - os: windows-latest
+            arch: x86_64
+            os_short: win
+            compiler_cc: msvc
+            rust-target: x86_64-pc-windows-msvc
+            packaging: Compress-Archive -Path ./package/* -DestinationPath timerex-win-x86_64.zip
           - os: ubuntu-latest
+            arch: x86
             os_short: linux
             compiler_cc: clang
             compiler_cxx: clang++
             rust-target: i686-unknown-linux-gnu
-            target: x86
-            packaging: cd package && zip -r ../timerex-linux.zip addons
+            packaging: cd package && zip -r ../timerex-linux-x86.zip addons
+          - os: ubuntu-latest
+            arch: x86_64
+            os_short: linux
+            compiler_cc: clang
+            compiler_cxx: clang++
+            rust-target: x86_64-unknown-linux-gnu
+            packaging: cd package && zip -r ../timerex-linux-x86_64.zip addons
     runs-on: ${{ matrix.os }}
-    name: ${{ matrix.os_short }}-${{ matrix.compiler_cc }}
+    name: ${{ matrix.os_short }}-${{ matrix.compiler_cc }}-${{ matrix.arch }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -76,8 +90,16 @@ jobs:
       - name: Install ambuild
         run: pip install ./ambuild
 
-      - name: Install Linux dependencies
-        if: startsWith(runner.os, 'Linux')
+      - name: Install Linux 64-bit dependencies
+        if: startsWith(runner.os, 'Linux') && matrix.arch == 'x86_64'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libstdc++6 libc6-dev linux-libc-dev \
+            ${{ matrix.compiler_cc }}
+
+      - name: Install Linux 32-bit dependencies
+        if: startsWith(runner.os, 'Linux') && matrix.arch == 'x86'
         run: |
           sudo dpkg --add-architecture i386
           sudo apt-get update
@@ -99,7 +121,7 @@ jobs:
         run: |
           cargo build --target ${{ matrix.rust-target }} --release
           mkdir -p build && cd build
-          python ../configure.py --enable-optimize --sm-path=${{ github.workspace }}/sourcemod/ --mms-path=${{ github.workspace }}/mmsource/ --targets ${{ matrix.target }}
+          python ../configure.py --enable-optimize --sm-path=${{ github.workspace }}/sourcemod/ --mms-path=${{ github.workspace }}/mmsource/ --targets ${{ matrix.arch }}
           ambuild
           ${{ matrix.packaging }}
 
@@ -107,6 +129,6 @@ jobs:
         uses: softprops/action-gh-release@v1
         if: startsWith(github.ref, 'refs/tags/')
         with:
-          files: timerex/build/timerex-${{ matrix.os_short }}.zip
+          files: timerex/build/timerex-${{ matrix.os_short }}-${{ matrix.arch }}.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
