@@ -12,6 +12,12 @@ typeset TimerEx
   function Action(any data);
 
   function Action();
+
+  function void();
+
+  function void(any data);
+
+  function void(Handle hndl);
 }
 
 native void CreateTimerEx(float interval, TimerEx func, any data = INVALID_HANDLE, int flags = 0, int channel = TIMER_CHANNEL_WORLD);
