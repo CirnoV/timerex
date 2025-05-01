@@ -33,7 +33,7 @@ impl TimerChannel {
         self.timers.push(timer);
     }
     pub fn update(&mut self) -> Option<Vec<TimerDetail>> {
-        if let Some(_) = self.stopped {
+        if self.stopped.is_some() {
             return None;
         }
 
@@ -46,7 +46,7 @@ impl TimerChannel {
         }
     }
     pub fn pause(&mut self) {
-        if let Some(_) = self.stopped {
+        if self.stopped.is_some() {
             self.resume();
         }
         self.stopped = Some(Instant::now());
@@ -75,7 +75,7 @@ impl TimerChannel {
     pub fn handle_pluginload(&mut self, identity: *mut ffi::c_void) -> Vec<TimerDetail> {
         let drop_timers = self
             .timers
-            .extract_if(.., |timer| timer.identity == identity)
+            .extract_if(.., |timer| std::ptr::eq(timer.identity, identity))
             .collect::<Vec<_>>();
 
         self.timers.shrink_to(TIMERS_MIN_CAPACITY);
@@ -125,9 +125,6 @@ impl TimerDetail {
         self.time.elapsed() >= self.interval
     }
 }
-
-unsafe impl Send for TimerDetail {}
-unsafe impl Sync for TimerDetail {}
 
 #[repr(C)]
 pub struct TimerInfo {

@@ -1,6 +1,6 @@
 [package]
 name = "timerex"
-version = "0.1.0"
+version = "3.0.0"
 authors = ["CirnoV <cirnov59@gmail.com>"]
 edition = "2024"
 
@@ -13,7 +13,6 @@ crate-type = ["staticlib"]
 [dependencies]
 bitflags = "2.9"
 libc = "0.2"
-once_cell = "1.21"
 
 [build-dependencies]
 cbindgen = "0.28"

@@ -4,16 +4,15 @@
 
 use std::collections::BTreeMap;
 use std::ffi;
-use std::sync::Arc;
-use std::sync::RwLock;
-
-use once_cell::sync::Lazy;
+use std::cell::RefCell;
 
 pub(crate) mod timer;
 
 use timer::{TimerChannel, TimerDetail, TimerInfo};
 
-static TIMER_MAP: Lazy<Arc<RwLock<BTreeMap<i32, TimerChannel>>>> = Lazy::new(|| Default::default());
+thread_local! {
+    static TIMER_MAP: RefCell<BTreeMap<i32, TimerChannel>> = const { RefCell::new(BTreeMap::new()) };
+}
 
 #[repr(C)]
 pub struct timer_arr {
@@ -32,8 +31,12 @@ impl timer_arr {
     }
 }
 
+/// # Safety
+///
+/// - The `hook`, `context`, and `identity` pointers must be valid (or null) for the lifetime of the timer. These pointers are stored but not dereferenced by this library.
+/// - This function must only be called from the SourceMod main thread.
 #[unsafe(no_mangle)]
-pub extern "C" fn create_timer(
+pub unsafe extern "C" fn create_timer(
     hook: *mut ffi::c_void,
     context: *mut ffi::c_void,
     identity: *mut ffi::c_void,
@@ -44,8 +47,8 @@ pub extern "C" fn create_timer(
 ) {
     let t = TimerDetail::new(hook, context, identity, interval, user_data, flags, channel);
 
-    {
-        let mut timer_map = TIMER_MAP.write().unwrap();
+    TIMER_MAP.with(|cell| {
+        let mut timer_map = cell.borrow_mut();
         let timer_list = match timer_map.get_mut(&channel) {
             Some(v) => v,
             None => {
@@ -54,69 +57,107 @@ pub extern "C" fn create_timer(
             }
         };
         timer_list.append(t);
-    }
+    });
 }
 
+/// # Safety
+///
+/// - The `arr` pointer must point to a valid `timer_arr` obtained from another function in this library.
+/// - After this call, the `arr` pointer and the `arr` field within it become invalid as the memory is freed.
+/// - This function must only be called from the SourceMod main thread.
 #[unsafe(no_mangle)]
-pub extern "C" fn drop_timer_arr(arr: *mut timer_arr) {
+pub unsafe extern "C" fn drop_timer_arr(arr: *mut timer_arr) {
     unsafe {
         let arr = arr.as_ref().unwrap();
         Vec::from_raw_parts(arr.arr, arr.n, arr.cap);
     };
 }
 
+/// # Safety
+///
+/// - This function must only be called from the SourceMod main thread.
+/// - The returned `timer_arr` must be freed using `drop_timer_arr`.
 #[unsafe(no_mangle)]
-pub extern "C" fn update_timer() -> timer_arr {
-    let mut timer_map = TIMER_MAP.write().unwrap();
-    let mut timers = timer_map
-        .iter_mut()
-        .filter_map(|(_key, channel): (&i32, &mut TimerChannel)| channel.update())
-        .flatten()
-        .map(|detail| detail.to_info())
-        .collect::<Vec<_>>();
+pub unsafe extern "C" fn update_timer() -> timer_arr {
+    let mut timers = TIMER_MAP.with(|cell| {
+        let mut timer_map = cell.borrow_mut();
+        timer_map
+            .iter_mut()
+            .filter_map(|(_key, channel): (&i32, &mut TimerChannel)| channel.update())
+            .flatten()
+            .map(|detail| detail.to_info())
+            .collect::<Vec<_>>()
+    });
 
     let output = timer_arr::from_vec(&mut timers);
     std::mem::forget(timers);
     output
 }
 
+/// # Safety
+///
+/// - The `channels` pointer must point to a valid array of `i32` values with length `len`.
+/// - This function must only be called from the SourceMod main thread.
 #[unsafe(no_mangle)]
-pub extern "C" fn pause_timer(channels: *mut i32, len: libc::size_t) {
+pub unsafe extern "C" fn pause_timer(channels: *mut i32, len: libc::size_t) {
     let channels = unsafe { std::slice::from_raw_parts(channels, len) };
-    channels.iter().for_each(|&c| pause_channel(c))
+    channels.iter().for_each(|&c| unsafe { pause_channel(c) })
 }
 
+/// # Safety
+///
+/// - This function must only be called from the SourceMod main thread.
 #[unsafe(no_mangle)]
-pub extern "C" fn pause_channel(channel: i32) {
-    if let Some(channel) = TIMER_MAP.write().unwrap().get_mut(&channel) {
-        channel.pause()
-    }
+pub unsafe extern "C" fn pause_channel(channel: i32) {
+    TIMER_MAP.with(|cell| {
+        if let Some(channel) = cell.borrow_mut().get_mut(&channel) {
+            channel.pause()
+        }
+    });
 }
 
+/// # Safety
+///
+/// - The `channels` pointer must point to a valid array of `i32` values with length `len`.
+/// - This function must only be called from the SourceMod main thread.
 #[unsafe(no_mangle)]
-pub extern "C" fn resume_timer(channels: *mut i32, len: libc::size_t) {
+pub unsafe extern "C" fn resume_timer(channels: *mut i32, len: libc::size_t) {
     let channels = unsafe { std::slice::from_raw_parts(channels, len) };
-    channels.iter().for_each(|&c| resume_channel(c))
+    channels.iter().for_each(|&c| unsafe { resume_channel(c) })
 }
 
+/// # Safety
+///
+/// - This function must only be called from the SourceMod main thread.
 #[unsafe(no_mangle)]
-pub extern "C" fn resume_timer_all() {
-    for (_key, channel) in TIMER_MAP.write().unwrap().iter_mut() {
-        channel.resume();
-    }
+pub unsafe extern "C" fn resume_timer_all() {
+    TIMER_MAP.with(|cell| {
+        for (_key, channel) in cell.borrow_mut().iter_mut() {
+            channel.resume();
+        }
+    });
 }
 
+/// # Safety
+///
+/// - This function must only be called from the SourceMod main thread.
 #[unsafe(no_mangle)]
-pub extern "C" fn resume_channel(channel: i32) {
-    if let Some(channel) = TIMER_MAP.write().unwrap().get_mut(&channel) {
-        channel.resume()
-    }
+pub unsafe extern "C" fn resume_channel(channel: i32) {
+    TIMER_MAP.with(|cell| {
+        if let Some(channel) = cell.borrow_mut().get_mut(&channel) {
+            channel.resume()
+        }
+    });
 }
 
+/// # Safety
+///
+/// - This function must only be called from the SourceMod main thread.
+/// - The returned `timer_arr` must be freed using `drop_timer_arr`.
 #[unsafe(no_mangle)]
-pub extern "C" fn remove_channel(channel: i32) -> timer_arr {
-    let mut timers = {
-        let mut timer_map = TIMER_MAP.write().unwrap();
+pub unsafe extern "C" fn remove_channel(channel: i32) -> timer_arr {
+    let mut timers = TIMER_MAP.with(|cell| {
+        let mut timer_map = cell.borrow_mut();
         match timer_map.remove(&channel) {
             Some(mut channel) => channel
                 .clear()
@@ -125,17 +166,21 @@ pub extern "C" fn remove_channel(channel: i32) -> timer_arr {
                 .collect(),
             None => Vec::new(),
         }
-    };
+    });
 
     let output = timer_arr::from_vec(&mut timers);
     std::mem::forget(timers);
     output
 }
 
+/// # Safety
+///
+/// - This function must only be called from the SourceMod main thread.
+/// - The returned `timer_arr` must be freed using `drop_timer_arr`.
 #[unsafe(no_mangle)]
-pub extern "C" fn clear_timer() -> timer_arr {
-    let mut timers = {
-        let mut timer_map = TIMER_MAP.write().unwrap();
+pub unsafe extern "C" fn clear_timer() -> timer_arr {
+    let mut timers = TIMER_MAP.with(|cell| {
+        let mut timer_map = cell.borrow_mut();
         let timers = timer_map
             .values_mut()
             .flat_map(|channel| channel.clear())
@@ -143,41 +188,50 @@ pub extern "C" fn clear_timer() -> timer_arr {
             .collect::<Vec<_>>();
         timer_map.clear();
         timers
-    };
+    });
 
     let output = timer_arr::from_vec(&mut timers);
     std::mem::forget(timers);
     output
 }
 
+/// # Safety
+///
+/// - This function must only be called from the SourceMod main thread.
+/// - The returned `timer_arr` must be freed using `drop_timer_arr`.
 #[unsafe(no_mangle)]
-pub extern "C" fn timer_mapchange() -> timer_arr {
-    let mut timers = {
-        let mut timer_map = TIMER_MAP.write().unwrap();
-        let timers = timer_map
+pub unsafe extern "C" fn timer_mapchange() -> timer_arr {
+    let mut timers = TIMER_MAP.with(|cell| {
+        let mut timer_map = cell.borrow_mut();
+
+        timer_map
             .values_mut()
             .flat_map(|channel| channel.handle_mapchange())
             .map(|detail| detail.to_info())
-            .collect::<Vec<_>>();
-        timers
-    };
+            .collect::<Vec<_>>()
+    });
 
     let output = timer_arr::from_vec(&mut timers);
     std::mem::forget(timers);
     output
 }
 
+/// # Safety
+///
+/// - The `identity` pointer must be a valid plugin identity pointer (or null).
+/// - This function must only be called from the SourceMod main thread.
+/// - The returned `timer_arr` must be freed using `drop_timer_arr`.
 #[unsafe(no_mangle)]
-pub extern "C" fn timer_pluginload(identity: *mut ffi::c_void) -> timer_arr {
-    let mut timers = {
-        let mut timer_map = TIMER_MAP.write().unwrap();
-        let timers = timer_map
+pub unsafe extern "C" fn timer_pluginload(identity: *mut ffi::c_void) -> timer_arr {
+    let mut timers = TIMER_MAP.with(|cell| {
+        let mut timer_map = cell.borrow_mut();
+
+        timer_map
             .values_mut()
             .flat_map(|channel| channel.handle_pluginload(identity))
             .map(|detail| detail.to_info())
-            .collect::<Vec<_>>();
-        timers
-    };
+            .collect::<Vec<_>>()
+    });
 
     let output = timer_arr::from_vec(&mut timers);
     std::mem::forget(timers);
