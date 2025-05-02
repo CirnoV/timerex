@@ -30,7 +30,7 @@ for cxx in builder.targets:
 
   path = ''
   if binary.compiler.target.platform == 'linux':
-    path = os.path.join(builder.currentSourcePath, 'target', f'{arch}-unknown-linux-gnu', directory, 'libtimerex.a')
+    path = os.path.join(builder.currentSourcePath, 'target', f'{arch}-unknown-linux-musl', directory, 'libtimerex.a')
   elif binary.compiler.target.platform == 'windows':
     path = os.path.join(builder.currentSourcePath, 'target', f'{arch}-pc-windows-msvc', directory, 'timerex.lib')
   else:

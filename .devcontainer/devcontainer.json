@@ -13,7 +13,7 @@
 		"ghcr.io/devcontainers/features/rust:1": {
 			"version": "latest",
 			"profile": "default",
-			"targets": "i686-unknown-linux-gnu"
+			"targets": "i686-unknown-linux-musl"
 		}
 	},
 

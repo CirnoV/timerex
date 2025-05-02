@@ -11,7 +11,7 @@ jobs:
   build:
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: [ubuntu-22.04, windows-latest]
         arch: [x86, x86_64]
         include:
           - os: windows-latest
@@ -26,19 +26,19 @@ jobs:
             compiler_cc: msvc
             rust-target: x86_64-pc-windows-msvc
             packaging: Compress-Archive -Path ./package/* -DestinationPath timerex-win-x86_64.zip
-          - os: ubuntu-latest
+          - os: ubuntu-22.04
             arch: x86
             os_short: linux
             compiler_cc: clang
             compiler_cxx: clang++
-            rust-target: i686-unknown-linux-gnu
+            rust-target: i686-unknown-linux-musl
             packaging: cd package && zip -r ../timerex-linux-x86.zip addons
-          - os: ubuntu-latest
+          - os: ubuntu-22.04
             arch: x86_64
             os_short: linux
             compiler_cc: clang
             compiler_cxx: clang++
-            rust-target: x86_64-unknown-linux-gnu
+            rust-target: x86_64-unknown-linux-musl
             packaging: cd package && zip -r ../timerex-linux-x86_64.zip addons
     runs-on: ${{ matrix.os }}
     name: ${{ matrix.os_short }}-${{ matrix.compiler_cc }}-${{ matrix.arch }}

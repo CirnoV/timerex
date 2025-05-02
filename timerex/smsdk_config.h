@@ -40,7 +40,7 @@
 /* Basic information exposed publicly */
 #define SMEXT_CONF_NAME "timerex"
 #define SMEXT_CONF_DESCRIPTION ""
-#define SMEXT_CONF_VERSION "3.0.0"
+#define SMEXT_CONF_VERSION "3.0.1"
 #define SMEXT_CONF_AUTHOR "CirnoV <cirnov59@gmail.com>"
 #define SMEXT_CONF_URL "https://github.com/cirnov/timerex"
 #define SMEXT_CONF_LOGTAG "TIMEREX"
